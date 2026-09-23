@@ -127,8 +127,9 @@ def needs_second_opinion(r: dict) -> bool:
     if sc[0]["scenario_id"] in ("SYS_GOODBYE", "SYS_OUT_OF_SCOPE") and c >= config.CONF_RUN: return False
     return config.CONF_CLARIFY <= c < config.CONF_RUN
 
-async def route_full(utterance, state=None, history=None, version=None, model=None):
-    """Роутер + второе мнение gpt-6-sol для зоны сомнения. Возвращает выход первого вызова с полем second_opinion."""
+async def route_full(utterance, state=None, history=None, version=None, model=None, on_early=None):
+    """Роутер + второе мнение gpt-6-sol для зоны сомнения. Возвращает выход первого вызова с полем second_opinion.
+    on_early(dict) — колбэк для раннего решения по первым полям потока (реализуется в router.py, сейчас не вызывается)."""
     r = await route(utterance, state, history, version, model)
     r["second_opinion"] = None
     if needs_second_opinion(r):

@@ -227,7 +227,7 @@ class Session:
         if f not in self.stack: self.stack.append(f)
 
     # ---------- understanding
-    async def understand(self, text):
+    async def understand(self, text, on_early=None):
         a = self.active if self.active and self.active.status == "active" else None
         yn = normalize.yes_no(text)
         if a and a.awaiting in ("confirmation", "offer") and yn:
@@ -245,7 +245,7 @@ class Session:
         if not a and normalize.is_bye(text):
             return {"decision": "goodbye", "fast_path": "goodbye_word", "scenarios": ["SYS_GOODBYE"], "slots": {}}
 
-        r = await route_full(text, state=self.router_state(), history=self.history[-7:-1])
+        r = await route_full(text, state=self.router_state(), history=self.history[-7:-1], on_early=on_early)
         slots = normalize.slots(r.get("slots"))
         if RU_SWITCH.search(text): self.lang_lock = "ru"
         elif KK_SWITCH.search(text): self.lang_lock = "kk"

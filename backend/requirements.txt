@@ -4,3 +4,4 @@ openai>=3.19
 python-dotenv>=1.0
 num2words>=0.5.13
 numpy>=1.26
+onnxruntime>=1.18
