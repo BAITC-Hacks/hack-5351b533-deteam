@@ -40,3 +40,7 @@ services:
       mock:
         condition: service_healthy
     restart: unless-stopped
+
+  recording-uploader:
+    environment:
+      RECORDING_CALLBACK_BASE_URL: http://mock:8000

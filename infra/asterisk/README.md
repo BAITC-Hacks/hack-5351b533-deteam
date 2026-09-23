@@ -25,10 +25,13 @@ docker compose ps
 
 Дополнительный Compose-файл запускает мок AudioSocket и временный ARI-контроллер. Они работают на этом же ПК в Docker-сети. Контроллер создаёт mixing bridge, добавляет звонящего и External Media канал, закрывает ресурсы при отбое и переводит по DTMF `0` на оператора. Мок возвращает голос звонящего с задержкой около секунды.
 
+Основной Compose также запускает локальный MinIO и `recording-uploader`. Asterisk пишет один WAV на входной канал, включая этап после перевода на оператора. После окончательного отбоя uploader загружает WAV в приватный bucket `call-recordings` и отправляет ссылку в backend по [контракту](../../contracts/openapi.yaml). При недоступности MinIO или backend файл остаётся в томе `call_recordings`, доставка повторяется. Консоль MinIO: `http://127.0.0.1:9001`, логин `MINIO_ROOT_USER` и пароль `MINIO_ROOT_PASSWORD` из `.env`.
+
 ```powershell
 docker compose -f compose.yaml -f compose.smoke.yaml up -d --build
 docker compose -f compose.yaml -f compose.smoke.yaml ps
 docker compose -f compose.yaml -f compose.smoke.yaml logs -f ari-smoke mock
+docker compose -f compose.yaml -f compose.smoke.yaml logs -f recording-uploader
 ```
 
 Для проверки конфигурации:
@@ -56,6 +59,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-ami.ps1
 2. Позвоните на `757504`: в Asterisk caller ID станет `+77010000004`; `757507` даёт `+77010000007`. В логе `ari-smoke` должны появиться `StasisStart`/bridge, в логе `mock` — AudioSocket UUID. После произнесённой фразы придёт эхо.
 3. Во время звонка нажмите DTMF `0`: должен зазвонить `operator`. DTMF `#` завершает тестовый звонок.
 4. Положите трубку и проверьте `docker compose exec asterisk asterisk -rx 'bridge show all'`: тестовый bridge должен исчезнуть.
+5. В логе `recording-uploader` проверьте загрузку WAV и подтверждение callback. В MinIO объект появится как `call-recordings/calls/<call_id>.wav`. Если callback не отвечает, запись остаётся локально и будет доставлена после восстановления бэкенда.
 
 ## Подключение настоящего бэкенда
 
@@ -69,6 +73,10 @@ ARI_APP=voice-ai
 AUDIOSOCKET_HOST=host.docker.internal
 AUDIOSOCKET_PORT=9092
 ```
+
+Для callback записи `RECORDING_CALLBACK_BASE_URL` в `infra/asterisk/.env` указывает на адрес бэкенда, достижимый **из контейнера uploader**. Для бэкенда на Windows-хосте это обычно `http://host.docker.internal:8000`; для сервиса в той же Docker-сети — `http://api:8000`. При необходимости задайте одинаковый bearer-токен в `RECORDING_CALLBACK_TOKEN` у uploader и бэкенда. Подписанный `recording_url` выдаётся для Windows-хоста через `MINIO_PUBLIC_ENDPOINT=http://127.0.0.1:9000` и истекает через 24 часа. Постоянный адрес записи — `recording_uri`/bucket/key; бэкенд может выпустить свежую ссылку через S3 API. `call_id` в callback — `channel.id` из `StasisStart`.
+
+Бэкенду для выпуска новых ссылок нужен S3 endpoint `http://minio:9000` в общей Docker-сети (или `http://127.0.0.1:9000`, если он на Windows-хосте), bucket `call-recordings` и учётные данные `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` из локального `.env`. Bucket приватный. Реализация callback должна идемпотентно сохранять запись по `call_id` и принимать повторную доставку с тем же `recording_uri`/`sha256`, даже если подписанный URL изменился.
 
 Если бэкенд запускается контейнером в той же Compose-сети, используйте `ARI_URL=http://asterisk:8088`, а в `AUDIOSOCKET_HOST` — имя сервиса бэкенда. Asterisk подключается **к** бэкенду по TCP 9092; бэкенд должен слушать `0.0.0.0:9092` внутри своего контейнера. ARI и AMI опубликованы на хосте только на loopback. Не передавайте `.env` или пароли в Git.
 

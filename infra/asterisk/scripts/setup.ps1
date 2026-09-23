@@ -16,6 +16,11 @@ AMI_SECRET=$(New-Secret)
 ARI_SECRET=$(New-Secret)
 SIP_TEST_SECRET=$(New-Secret)
 SIP_OPERATOR_SECRET=$(New-Secret)
+MINIO_ROOT_USER=voicerouter
+MINIO_ROOT_PASSWORD=$(New-Secret)
+MINIO_PUBLIC_ENDPOINT=http://127.0.0.1:9000
+RECORDING_CALLBACK_BASE_URL=http://host.docker.internal:8000
+RECORDING_CALLBACK_TOKEN=
 ASTERISK_PUBLIC_IP=
 ASTERISK_LOCAL_NET=auto
 LOCAL_SIP_PEER_IP=
@@ -30,6 +35,22 @@ LOCAL_SIP_PEER_IP=
     }
     if ($content -notmatch '(?m)^LOCAL_SIP_PEER_IP=') {
         $content = $content.TrimEnd("`r", "`n") + "`nLOCAL_SIP_PEER_IP=`n"
+    }
+    if ($content -notmatch '(?m)^MINIO_ROOT_USER=') {
+        $content = $content.TrimEnd("`r", "`n") + "`nMINIO_ROOT_USER=voicerouter`n"
+    }
+    if ($content -notmatch '(?m)^MINIO_ROOT_PASSWORD=') {
+        $content = $content.TrimEnd("`r", "`n") + "`nMINIO_ROOT_PASSWORD=$(New-Secret)`n"
+        Write-Host 'Added MINIO_ROOT_PASSWORD to existing .env.'
+    }
+    if ($content -notmatch '(?m)^MINIO_PUBLIC_ENDPOINT=') {
+        $content = $content.TrimEnd("`r", "`n") + "`nMINIO_PUBLIC_ENDPOINT=http://127.0.0.1:9000`n"
+    }
+    if ($content -notmatch '(?m)^RECORDING_CALLBACK_BASE_URL=') {
+        $content = $content.TrimEnd("`r", "`n") + "`nRECORDING_CALLBACK_BASE_URL=http://host.docker.internal:8000`n"
+    }
+    if ($content -notmatch '(?m)^RECORDING_CALLBACK_TOKEN=') {
+        $content = $content.TrimEnd("`r", "`n") + "`nRECORDING_CALLBACK_TOKEN=`n"
     }
     if ($content -match '(?m)^ASTERISK_LOCAL_NET=172\.16\.0\.0/12\r?$') {
         $content = [regex]::Replace($content, '(?m)^ASTERISK_LOCAL_NET=172\.16\.0\.0/12\r?$', 'ASTERISK_LOCAL_NET=auto')

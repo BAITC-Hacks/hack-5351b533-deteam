@@ -10,7 +10,7 @@ WS /ws/voice?fixture=web-d03 : на каждую реплику клиента (
 import asyncio, json, math, os, struct, uuid, time
 from urllib.parse import parse_qsl
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 import uvicorn
 
@@ -19,6 +19,7 @@ J = lambda p: json.loads((FX / p).read_text())
 app = FastAPI(title="Voice Router mock")
 supervisors: set[WebSocket] = set()
 calls: dict[str, dict] = {}
+recordings: dict[str, dict] = {}
 
 def load(sid):
     return [json.loads(l) for l in (FX / "sessions" / f"{sid}.jsonl").read_text().splitlines() if l]
@@ -95,6 +96,18 @@ async def call_register(r: Request):
 def outcome(u: str): return PlainTextResponse(calls.get(u, {}).get("outcome", "hangup"))
 @app.post("/api/telephony/calls/{u}/hangup")
 async def hangup(u: str, r: Request): print("HANGUP", u, dict(parse_qsl((await r.body()).decode()))); return PlainTextResponse("ok")
+
+@app.post("/api/telephony/calls/{call_id}/recording")
+async def recording_complete(call_id: str, r: Request):
+    payload = await r.json()
+    if payload.get("call_id") != call_id:
+        raise HTTPException(status_code=400, detail="call_id mismatch")
+    previous = recordings.get(call_id)
+    if previous and (previous.get("recording_uri"), previous.get("sha256")) != (payload.get("recording_uri"), payload.get("sha256")):
+        raise HTTPException(status_code=409, detail="recording already saved with different content")
+    recordings[call_id] = payload
+    print("RECORDING", call_id, payload.get("recording_uri"), payload.get("sha256"), flush=True)
+    return {"status": "ok"}
 
 @app.websocket("/ws/supervisor")
 async def ws_sup(ws: WebSocket):

@@ -13,9 +13,46 @@ services:
       - "127.0.0.1:8088:8088/tcp"
     volumes:
       - ./config/pjsip_trunk.conf:/etc/asterisk/pjsip_trunk.conf:ro
+      - call_recordings:/var/spool/asterisk/monitor
     healthcheck:
       test: ["CMD", "asterisk", "-rx", "core show uptime"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:9000:9000/tcp"
+      - "127.0.0.1:9001:9001/tcp"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  recording-uploader:
+    build:
+      context: ../..
+      dockerfile: infra/asterisk/recording/Dockerfile
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      MINIO_BUCKET: call-recordings
+      RECORDING_CALLBACK_BASE_URL: ${RECORDING_CALLBACK_BASE_URL:-http://host.docker.internal:8000}
+      RECORDING_CALLBACK_TOKEN: ${RECORDING_CALLBACK_TOKEN:-}
+      RECORDINGS_DIR: /recordings
+    volumes:
+      - call_recordings:/recordings
+    depends_on:
+      - minio
+    restart: unless-stopped
+
+volumes:
+  call_recordings:
+  minio_data:

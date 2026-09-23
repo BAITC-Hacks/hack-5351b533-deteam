@@ -11,8 +11,9 @@ info:
     - `WS /ws/supervisor` — поток всех событий всех сессий + события bench/patch/catalog. Только сервер → клиент.
 
     Телефония: управление звонком через ARI (бэкенд = ARI-приложение voice-ai), звук через External Media
-    с encapsulation=audiosocket на TCP :9092. Схема в docs/telephony/README.md. Эндпоинты /api/telephony/* ниже
-    нужны только для запасного режима без ARI (диалплан AudioSocket + curl) и для отладки.
+    с encapsulation=audiosocket на TCP :9092. Схема в docs/telephony/README.md. POST /api/telephony/calls/{call_id}/recording
+    обязателен для уведомления о готовой записи в MinIO. Остальные /api/telephony/* ниже нужны только
+    для запасного режима без ARI (диалплан AudioSocket + curl) и для отладки.
 servers:
   - url: http://localhost:8000
 tags:
@@ -242,6 +243,31 @@ paths:
       requestBody: {content: {application/x-www-form-urlencoded: {schema: {type: object, properties: {cause: {type: string}}}}}}
       responses:
         "200": {description: OK, content: {text/plain: {schema: {type: string}, example: ok}}}
+  /api/telephony/calls/{call_id}/recording:
+    post:
+      tags: [telephony]
+      summary: Уведомление о полной записи звонка после загрузки WAV в MinIO
+      description: |
+        call_id равен Asterisk UNIQUEID входящего канала и channel.id события StasisStart.
+        Backend связывает запись с телефонной сессией по этому ID и сохраняет bucket/object_key
+        или recording_uri как постоянный адрес объекта. recording_url — приватная подписанная ссылка
+        на 24 часа для локального просмотра; после истечения backend создаёт новую ссылку через S3 API.
+        Повторный POST с тем же call_id и тем же recording_uri/sha256 должен быть успешным и
+        идемпотентным, даже если подпись recording_url изменилась при повторной доставке.
+        Если телефонная сессия ещё не создана или вызов был диагностическим, backend сохраняет
+        запись по call_id и связывает её с сессией позднее; отсутствие сессии не даёт 404.
+        Если включена защита callback, uploader посылает Authorization: Bearer <RECORDING_CALLBACK_TOKEN>.
+      parameters:
+        - {name: call_id, in: path, required: true, schema: {type: string}, description: Asterisk channel.id / UNIQUEID}
+        - {name: Idempotency-Key, in: header, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RecordingNotification"}
+      responses:
+        "200": {description: Ссылка сохранена или уже была сохранена}
+        "204": {description: Ссылка сохранена, без тела ответа}
 components:
   responses:
     NotFound: {description: Not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
@@ -276,9 +302,27 @@ components:
         languages: {type: array, items: {type: string}}
         scenarios: {type: array, items: {type: string}}
         handoff_queue: {type: [string, "null"]}
+        recording_status: {type: [string, "null"], enum: [pending, available, failed, null]}
+        recording_uri: {type: [string, "null"], description: Постоянный s3:// адрес полной записи звонка}
+        recording_url: {type: [string, "null"], description: Подписанная временная ссылка для просмотра записи}
         latency_total_p50: {type: integer}
         catalog_version: {type: string}
         flagged: {type: boolean, description: есть ход с уверенностью ниже порога, SYS_UNCLEAR или ручная пометка}
+    RecordingNotification:
+      type: object
+      additionalProperties: false
+      required: [call_id, recording_uri, recording_url, bucket, object_key, content_type, size_bytes, duration_ms, ended_at, sha256]
+      properties:
+        call_id: {type: string, description: Asterisk channel.id / UNIQUEID}
+        recording_uri: {type: string, pattern: '^s3://', description: Постоянный адрес объекта}
+        recording_url: {type: string, format: uri, description: Подписанная ссылка на 24 часа}
+        bucket: {type: string}
+        object_key: {type: string}
+        content_type: {const: audio/wav}
+        size_bytes: {type: integer, minimum: 1}
+        duration_ms: {type: integer, minimum: 0}
+        ended_at: {type: string, format: date-time}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
     Stats:
       type: object
       properties:

@@ -214,25 +214,39 @@ writeprotect=yes
 [from-inbound]
 exten => s,1,NoOp(Incoming voice AI call)
  same => n,Answer()
+ same => n,Gosub(record-call,s,1)
  same => n,Stasis(voice-ai)
  same => n,Hangup()
 
 ; 7575NN represents demo client CNN (+770100000NN).
 exten => _7575XX,1,Set(CALLERID(num)=+770100000${EXTEN:4:2})
  same => n,Answer()
+ same => n,Gosub(record-call,s,1)
  same => n,Stasis(voice-ai)
  same => n,Hangup()
 
 ; Direct SIP/RTP diagnostic: call 9999 and listen for your own voice.
 exten => 9999,1,Answer()
+ same => n,Gosub(record-call,s,1)
  same => n,Echo()
  same => n,Hangup()
 
 exten => _X.,1,Answer()
+ same => n,Gosub(record-call,s,1)
  same => n,Stasis(voice-ai)
  same => n,Hangup()
 exten => _X,1,Goto(s,1)
 exten => voice-ai,1,Goto(s,1)
+
+[record-call]
+exten => s,1,Set(RECORDING_ID=${UNIQUEID})
+ same => n,MixMonitor(/var/spool/asterisk/monitor/${RECORDING_ID}.wav,i(RECORDING_MIX_ID),/usr/bin/python3 /usr/local/bin/recording-finished ${RECORDING_ID})
+ same => n,Set(CHANNEL(hangup_handler_push)=recording-finish,s,1)
+ same => n,Return()
+
+[recording-finish]
+exten => s,1,StopMixMonitor(${RECORDING_MIX_ID})
+ same => n,Return()
 
 [saqta-transfer]
 exten => _[a-z].,1,NoOp(Transfer to ${EXTEN}: ${SAQTA_SUMMARY})
@@ -285,5 +299,8 @@ gid = grp.getgrnam("asterisk").gr_gid
 for path in [CONFIG / name for name in ("manager.conf", "http.conf", "ari.conf", "rtp.conf", "pjsip.conf", "extensions.conf", "modules.conf")]:
     os.chown(path, uid, gid)
 os.chown("/run/asterisk", uid, gid)
+monitor_dir = Path("/var/spool/asterisk/monitor")
+monitor_dir.mkdir(parents=True, exist_ok=True)
+os.chown(monitor_dir, uid, gid)
 
 os.execvp("asterisk", ["asterisk", "-f", "-U", "asterisk", "-G", "asterisk", "-vvv"])

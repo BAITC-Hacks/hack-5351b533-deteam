@@ -8,7 +8,7 @@
 |---|---|
 | [backend/](backend) | бэкенд голосового агента (в работе) |
 | [frontend/](frontend) | веб: звонок, трассировка, супервизор |
-| [infra/asterisk/](infra/asterisk) | Asterisk в Docker: PJSIP, AMI, ARI |
+| [infra/asterisk/](infra/asterisk) | Asterisk, MinIO и загрузчик полных записей звонков |
 | [contracts/](contracts) | схемы событий и REST, общие для всех частей |
 | [fixtures/](fixtures) | шаблонные диалоги и данные супервизора |
 | [tools/](tools) | мок‑сервер, проверка фикстур против схем |
@@ -35,4 +35,4 @@ cd infra/asterisk && docker compose up -d --build    # Asterisk
 python data/evaluate.py predictions.json data/dev_utterances.json
 ```
 
-Для сквозной проверки телефонии на одном компьютере используйте `infra/asterisk/compose.smoke.yaml`: он добавляет к Asterisk мок AudioSocket и временный ARI-контроллер. Настройка `.env`, SIP-аккаунтов и порядок проверки звука описаны в [infra/asterisk/README.md](infra/asterisk/README.md).
+Для сквозной проверки телефонии на одном компьютере используйте `infra/asterisk/compose.smoke.yaml`: он добавляет к Asterisk мок AudioSocket и временный ARI-контроллер. Основной Compose сохраняет записи в MinIO и уведомляет backend по контракту. Настройка `.env`, SIP-аккаунтов и порядок проверки описаны в [infra/asterisk/README.md](infra/asterisk/README.md).

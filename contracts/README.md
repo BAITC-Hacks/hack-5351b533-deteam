@@ -9,7 +9,7 @@
 | `dialog-state.schema.json` | состояние диалога: клиент, активный сценарий, стек, слоты, подтверждение |
 | `router-output.schema.json` | вывод роутера, strict‑схема для structured outputs `gpt-6-luna` |
 | `evolution.schema.json` | кейсы, прогоны bench, патчи каталога, версии каталога |
-| `openapi.yaml` | REST: сессии, статистика, каталог, эволюция, телефония |
+| `openapi.yaml` | REST: сессии, статистика, каталог, эволюция, телефония и callback полной записи из MinIO |
 | `asterisk/` | конфиги Asterisk для схемы ARI + External Media: `extensions.conf`, `ari.conf`, `http.conf`, `pjsip.conf` |
 
 Проверка фикстур против схем:
