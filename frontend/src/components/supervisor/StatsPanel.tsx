@@ -5,19 +5,22 @@ import { BarList, Kpi, Panel, TotalLatency } from '../ui'
 
 const TOP_SCENARIOS = 8
 
-/** Ключевые цифры одной строкой — то, что супервизор смотрит первым */
+/**
+ * Четыре цифры «всё ли в порядке»: объём, сколько ушло к оператору, сколько раз робот не понял,
+ * и насколько долго клиент ждёт ответа в худших случаях. Инженерные метрики — в «Распределениях».
+ */
 export function StatsKpis({ stats }: { stats: Stats }) {
   const total = stats.latency_ms.total
   return (
     <div className="kpis">
-      <Kpi label="Сессий" value={stats.sessions} />
-      <Kpi label="Ходов" value={stats.turns} />
-      <Kpi label="До ответа, p50" value={total ? <TotalLatency value={total.p50} /> : '—'} hint="Медиана от конца речи клиента до первого звука ответа" />
-      <Kpi label="До ответа, p95" value={total ? <TotalLatency value={total.p95} /> : '—'} />
-      <Kpi label="Переводы оператору" value={pct(stats.handoff_rate)} />
-      <Kpi label="Уточнения (SYS_UNCLEAR)" value={pct(stats.unclear_rate)} />
-      <Kpi label="Ответ шаблоном" value={pct(stats.template_rate)} hint="Ответ без вызова LLM — быстрее" />
-      <Kpi label="Спекулятивные попадания" value={pct(stats.speculative_hit_rate)} hint="Роутер угадал сценарий до конца фразы" />
+      <Kpi label="Звонков" value={stats.sessions} />
+      <Kpi label="Переведено оператору" value={pct(stats.handoff_rate)} hint="Доля ходов, где робот передал разговор человеку" />
+      <Kpi label="Уточнения" value={pct(stats.unclear_rate)} hint="Робот не понял с первого раза и переспросил (SYS_UNCLEAR)" />
+      <Kpi
+        label="Время ответа, p95"
+        value={total ? <TotalLatency value={total.p95} /> : '—'}
+        hint="95% ответов быстрее этого. Ориентир — 1,5 с от конца речи клиента до первого звука"
+      />
     </div>
   )
 }
@@ -31,6 +34,10 @@ export function StatsBreakdown({ stats }: { stats: Stats }) {
 
   return (
     <Panel title="Распределения" hint="По всем ходам всех сессий">
+      <p className="muted small">
+        Ходов: <span className="num">{stats.turns}</span> · ответ шаблоном без LLM: <span className="num">{pct(stats.template_rate)}</span> ·
+        спекулятивные попадания роутера: <span className="num">{pct(stats.speculative_hit_rate)}</span>
+      </p>
       <div className="breakdown">
         <div>
           <h3>Задержка по этапам</h3>
