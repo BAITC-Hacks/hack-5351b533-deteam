@@ -10,9 +10,10 @@ info:
       выход PCM16 LE 24 kHz mono. Текстовые кадры: JSON-события.
     - `WS /ws/supervisor` — поток всех событий всех сессий + события bench/patch/catalog. Только сервер → клиент.
 
-    Телефония: AudioSocket TCP :9092 (AUDIOSOCKET_PORT; протокол в docs/telephony/README.md, диалплан contracts/asterisk/extensions.conf)
-    + эндпоинты /api/telephony/*. Сервер шлёт непрерывный поток кадров 0x10 по 20 мс (320 байт), в паузах тишина (keepalive:
-    AudioSocket() Asterisk 22 рвёт сокет после 2 с без активности). Конец звонка: 0x00; перевод: AMI Setvar+Redirect, иначе /outcome.
+    Телефония: управление звонком через ARI (бэкенд = ARI-приложение voice-ai, app/ari.py), звук через External Media
+    с encapsulation=audiosocket на TCP :9092 (AUDIOSOCKET_PORT). Схема в docs/telephony/README.md. AudioSocket: непрерывный поток
+    кадров 0x10 по 20 мс (320 байт), в паузах тишина (keepalive: Asterisk 22 рвёт сокет после 2 с без активности), конец звонка 0x00.
+    Эндпоинты /api/telephony/* ниже нужны для запасного режима без ARI (диалплан AudioSocket + curl, перевод через /outcome или AMI) и для отладки.
 servers:
   - url: http://localhost:8000
 tags:
@@ -262,7 +263,7 @@ paths:
   /api/telephony/calls:
     post:
       tags: [telephony]
-      summary: Asterisk регистрирует входящий звонок до AudioSocket (func_curl). Ответ text/plain = UUID для AudioSocket()
+      summary: Запасной режим без ARI. Asterisk регистрирует звонок через func_curl, ответ text/plain = UUID для AudioSocket()
       requestBody:
         content:
           application/x-www-form-urlencoded:
@@ -272,7 +273,7 @@ paths:
               properties:
                 caller: {type: string, description: "CALLERID(num), любой формат; сервер нормализует к +7XXXXXXXXXX"}
                 dnid: {type: string}
-                channel: {type: string, description: "${CHANNEL}, нужен для AMI Redirect при переводе"}
+                channel: {type: string, description: "${CHANNEL}, для отладки"}
                 uniqueid: {type: string}
       responses:
         "200":
