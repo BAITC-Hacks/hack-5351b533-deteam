@@ -62,7 +62,8 @@ SLOTS
   dates ISO YYYY-MM-DD relative to TODAY (завтра/ертең = TODAY+1, вчера/кеше = TODAY-1, "три дня назад"/"үш күн бұрын" = TODAY-3);
   years 4 digits ("двадцатого года" -> 2020); money and counts as plain integers; lists comma-separated;
   booleans "true"/"false"; enums exactly one of the allowed values; cities/countries/doctor specialties in English as in the allowed values or common English names.
-- reason: max 12 words, English. boundary_rule: which not_this_if rule you applied, or null.
+- segment: the part of the utterance for this scenario ONLY when there are several scenarios; otherwise "".
+- reason: max 8 words, English. boundary_rule: short name of the not_this_if rule you applied (e.g. "SC17->SC19"), or null.
 - urgency: urgent for SC11/SC15/SC38 situations, high for claims/complaints, else normal. emotion of the client.
 """
 
@@ -109,7 +110,7 @@ async def route(utterance: str, state: dict | None = None, history: list | None 
     out = json.loads(r.output_text)
     out["_meta"] = {"model": kw["model"], "latency_ms": int((time.perf_counter() - t) * 1000), "catalog_version": version,
                     "input_tokens": r.usage.input_tokens, "cached_tokens": r.usage.input_tokens_details.cached_tokens,
-                    "output_tokens": r.usage.output_tokens}
+                    "output_tokens": r.usage.output_tokens, "service_tier": getattr(r, "service_tier", None)}
     return out
 
 async def warm(version=None):
