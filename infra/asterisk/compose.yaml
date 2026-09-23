@@ -38,6 +38,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/asterisk/recording/Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Linux: иначе callback на host.docker.internal:8000 не резолвится
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
