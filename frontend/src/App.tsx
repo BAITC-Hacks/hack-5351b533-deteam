@@ -19,7 +19,7 @@ export default function App() {
         <div className="app">
           <nav className="nav" aria-label="Основная навигация">
             <NavLink to="/supervisor" className="brand" aria-label="NotSoFar v.7 — открыть супервизора">
-              <img className="brand-logo" src="/notsofar-mark.png" width="48" height="48" alt="" aria-hidden="true" />
+              <img className="brand-logo" src="/notsofar-mark.png?v=2" width="84" height="56" alt="" aria-hidden="true" />
               <span className="brand-wordmark">NotSoFar <span className="brand-version">v.7</span></span>
             </NavLink>
             <NavLink to="/call">Звонок</NavLink>
