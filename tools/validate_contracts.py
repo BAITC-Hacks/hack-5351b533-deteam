@@ -1,9 +1,9 @@
-"""Проверка fixtures на соответствие контрактам: python contracts/tools/validate.py"""
+"""Проверка fixtures на соответствие контрактам: python tools/validate_contracts.py"""
 import json, sys
 from pathlib import Path
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
-R = Path(__file__).resolve().parents[2]
+R = Path(__file__).resolve().parents[1]
 schemas = {p.name: json.loads(p.read_text()) for p in (R / "contracts").glob("*.schema.json")}
 reg = Registry().with_resources([(s["$id"], Resource.from_contents(s)) for s in schemas.values()])
 V = lambda name, ref=None: Draft202012Validator({"$ref": schemas[name]["$id"] + (ref or "")}, registry=reg)

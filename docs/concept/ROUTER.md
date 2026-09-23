@@ -146,7 +146,7 @@ Rules:
 - Output strictly by the schema. Keep reason under 12 words.
 ```
 
-Реальный текст промпта живёт в `/api/router/prompt.py` и собирается из scenarios.json автоматически, чтобы патчи каталога попадали в него без правок кода.
+Реальный текст промпта живёт в `backend/app/router/prompt.py` и собирается из scenarios.json автоматически, чтобы патчи каталога попадали в него без правок кода.
 
 ## 8. Примеры на dev‑наборе
 
@@ -162,7 +162,7 @@ Rules:
 ## 9. Оценка
 
 ```bash
-make bench            # роутер по dev_utterances.json → regression/predictions.json → docs/evaluate.py
+make bench            # роутер по dev_utterances.json → regression/predictions.json → data/evaluate.py
 ```
 
 Раннер гоняет 104 реплики в 20 параллельных запросов, пишет метрики `primary_acc`, `full_match`, `intent_recall`, разбивку по языку и типу, p50/p95 задержки роутера. Тот же раннер используется эволюцией каталога для регрессии, см. [EVOLUTION.md](EVOLUTION.md). Реплики dev‑набора в промпт не попадают ни в каком виде, иначе замер теряет смысл.

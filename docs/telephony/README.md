@@ -1,8 +1,8 @@
 # Телефония: Asterisk → Voice Router
 
-Для того, кто поднимает Asterisk. Задача: входящий звонок на софтфон или SIP‑транк попадает в того же голосового агента, что и веб, с идентификацией клиента по номеру звонящего и переводом на оператора. Бэкенд пишется параллельно, проверять можно на мок‑сервере из [/fixtures/mock-server](../../fixtures/mock-server).
+Для того, кто поднимает Asterisk. Задача: входящий звонок на софтфон или SIP‑транк попадает в того же голосового агента, что и веб, с идентификацией клиента по номеру звонящего и переводом на оператора. Бэкенд пишется параллельно, проверять можно на мок‑сервере из [/tools/mock-server](../../tools/mock-server).
 
-Готовые конфиги: [/contracts/telephony](../../contracts/telephony). REST телефонии: раздел `telephony` в [/contracts/openapi.yaml](../../contracts/openapi.yaml).
+Готовые конфиги: [/contracts/asterisk](../../contracts/asterisk). REST телефонии: раздел `telephony` в [/contracts/openapi.yaml](../../contracts/openapi.yaml).
 
 ## Схема
 
@@ -20,7 +20,7 @@
 
 1. Asterisk 20 или 22 LTS в Docker с модулями `app_audiosocket`, `func_curl`, `res_pjsip`, `manager`. Проверка: `asterisk -rx "module show like audiosocket"` и `module show like curl`.
 2. Сервис в общем `docker compose` в профиле `telephony`, в одной сети с `api`. Порты наружу 5060/udp и RTP 10000–10100/udp для софтфонов.
-3. Конфиги из `/contracts/telephony`: `pjsip.conf`, `extensions.conf`, `manager.conf`. Пароли заменить.
+3. Конфиги из `/contracts/asterisk`: `pjsip.conf`, `extensions.conf`, `manager.conf`. Пароли заменить.
 4. Два софтфона: клиент `1001` и оператор `operator`. Подойдут Linphone, Zoiper, MicroSIP.
 5. Опционально SIP‑транк провайдера, входящие маршрутизировать в `saqta-inbound`, `7575`.
 
@@ -77,8 +77,8 @@ Action: Redirect          Channel: PJSIP/1001-00000001   Context: saqta-transfer
 ## Проверка без бэкенда
 
 ```bash
-.venv/bin/pip install -r fixtures/mock-server/requirements.txt
-.venv/bin/python fixtures/mock-server/server.py
+.venv/bin/pip install -r tools/mock-server/requirements.txt
+.venv/bin/python tools/mock-server/server.py
 ```
 
 Мок на `:8000` принимает регистрацию звонка и отдаёт UUID, на `:9092` работает эхо AudioSocket: вы слышите себя с задержкой около секунды. DTMF `0` помечает исход `transfer:operator_general` и закрывает сокет, `#` закрывает сокет с исходом `hangup`. В логе мока видно регистрацию, UUID, DTMF и завершение.

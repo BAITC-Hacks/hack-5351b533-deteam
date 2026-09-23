@@ -14,7 +14,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 import uvicorn
 
-FX = Path(__file__).resolve().parent.parent
+FX = Path(__file__).resolve().parents[2] / "fixtures"
 J = lambda p: json.loads((FX / p).read_text())
 app = FastAPI(title="Voice Router mock")
 supervisors: set[WebSocket] = set()

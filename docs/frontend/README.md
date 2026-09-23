@@ -10,8 +10,8 @@
 ## Быстрый старт с моком
 
 ```bash
-python -m venv .venv && .venv/bin/pip install -r fixtures/mock-server/requirements.txt
-.venv/bin/python fixtures/mock-server/server.py      # http/ws :8000
+python -m venv .venv && .venv/bin/pip install -r tools/mock-server/requirements.txt
+.venv/bin/python tools/mock-server/server.py      # http/ws :8000
 ```
 
 `ws://localhost:8000/ws/voice?fixture=web-d03` проигрывает диалог по ходам. Следующий ход запускается текстом (`text.input`), кнопкой push‑to‑talk (`input.commit`) или голосом: 0.6 с речи и 0.5 с тишины. Доступные фикстуры: `web-d03`, `web-d04`, `phone-p01`. Аудио бота в моке это тон 440 Гц нужной длины. REST отвечает данными из `fixtures/supervisor`. `POST /api/patches` запускает сценарий эволюции: 7 событий `patch.progress` раз в 2 секунды, затем `patch.ready`.
@@ -97,7 +97,7 @@ tts.start → [аудио] → turn.trace → dialog.state → tts.end
 | `fixtures/supervisor/*.json` | статистика, сессии, кейсы, прогоны bench, патч с диффом, версии каталога |
 | `fixtures/catalog/*.json` | 40 сценариев с русскими названиями и флагами, действия, персоны с телефонами |
 
-Проверка, что фикстуры и схемы согласованы: `python contracts/tools/validate.py`.
+Проверка, что фикстуры и схемы согласованы: `python tools/validate_contracts.py`.
 
 ## Что важно не забыть
 

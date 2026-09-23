@@ -118,7 +118,7 @@ paths:
   /api/catalog/versions/{version}:
     get:
       tags: [catalog]
-      summary: Полный каталог версии (формат docs/scenarios.json)
+      summary: Полный каталог версии (формат data/scenarios.json)
       parameters: [{name: version, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: OK, content: {application/json: {schema: {type: object}}}}

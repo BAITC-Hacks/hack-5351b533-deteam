@@ -10,10 +10,10 @@
 | `router-output.schema.json` | вывод роутера, strict‑схема для structured outputs `gpt-6-luna` |
 | `evolution.schema.json` | кейсы, прогоны bench, патчи каталога, версии каталога |
 | `openapi.yaml` | REST: сессии, статистика, каталог, эволюция, телефония |
-| `telephony/` | `extensions.conf`, `pjsip.conf`, `manager.conf` для Asterisk |
+| `asterisk/` | примеры AudioSocket‑диалплана: `extensions.conf`, `pjsip.conf`, `manager.conf` для Asterisk |
 
 Проверка фикстур против схем:
 
 ```bash
-.venv/bin/pip install jsonschema && .venv/bin/python contracts/tools/validate.py
+.venv/bin/pip install jsonschema && .venv/bin/python tools/validate_contracts.py
 ```

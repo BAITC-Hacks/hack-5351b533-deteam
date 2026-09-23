@@ -169,7 +169,7 @@
 | Канал | Вход | Выход | Где контракт |
 |---|---|---|---|
 | Web | WS, бинарные кадры PCM16 LE 16 kHz mono по 20 мс, JSON‑события текстом | бинарные кадры PCM16 LE 24 kHz, JSON‑события | [docs/frontend](../frontend/README.md), [contracts/ws-events.schema.json](../../contracts/ws-events.schema.json) |
-| Телефон | Asterisk `AudioSocket`, slin 8 kHz, caller ID через HTTP‑регистрацию | slin 8 kHz, перевод на оператора через AMI Redirect, завершение через hangup AudioSocket | [docs/telephony](../telephony/README.md), [contracts/telephony](../../contracts/telephony) |
+| Телефон | Asterisk `AudioSocket`, slin 8 kHz, caller ID через HTTP‑регистрацию | slin 8 kHz, перевод на оператора через AMI Redirect, завершение через hangup AudioSocket | [docs/telephony](../telephony/README.md), [contracts/asterisk](../../contracts/asterisk) |
 | Текст | `text.input` в том же WS или `POST /api/route` | те же события, `stt = 0` | [contracts/openapi.yaml](../../contracts/openapi.yaml) |
 
 Сессия одна и та же для всех каналов, отличается только транспорт и поле `channel`.
@@ -189,13 +189,16 @@ docker compose up
 Переменные окружения: `OPENAI_API_KEY`, `ROUTER_MODEL=gpt-6-luna`, `ROUTER_FALLBACK_MODEL=gpt-5.6-luna`, `SECOND_OPINION_MODEL=gpt-6-sol`, `PATCHER_MODEL=gpt-6-sol`, `STT_MODEL=gpt-live-transcribe`, `TTS_MODEL=gpt-4o-mini-tts`, `TTS_VOICE`, `CATALOG_DIR`, `CATALOG_FROZEN=0|1`, `VAD_SILENCE_MS=280`.
 
 ```text
-/docs            стартовый кит кейса + наши документы (concept, frontend, telephony)
-/contracts       JSON‑схемы событий, трассировки, роутера, эволюции; OpenAPI; примеры конфигов Asterisk
-/fixtures        шаблонные сессии и данные супервизора, мок‑сервер для фронта
-/api             бэкенд (пайплайн, роутер, исполнитель, моки, bench, evolution)
-/web             фронтенд
-/catalog         версии каталога сценариев (v1 = scenarios.json из кита)
-/regression      cases.jsonl, отчёты bench
+/backend         бэкенд: пайплайн, роутер, исполнитель, моки, bench, evolution (FastAPI)
+/frontend        веб: звонок, трассировка, супервизор, эволюция, оператор (Vite + React + TS)
+/infra/asterisk  Asterisk в Docker: PJSIP, AMI, ARI
+/contracts       JSON‑схемы событий, трассировки, роутера, эволюции; OpenAPI; примеры диалплана AudioSocket
+/fixtures        шаблонные сессии, данные супервизора, каталог для UI
+/tools           мок‑сервер для фронта и телефонии, проверка фикстур против схем
+/data            стартовый кит: scenarios, slots, actions, knowledge_base, mock_backend, dialogs, dev_utterances, evaluate.py
+/docs            case (условия и ТЗ), concept, frontend, telephony
+/catalog         версии каталога сценариев (v1 = data/scenarios.json), создаётся бэкендом
+/regression      cases.jsonl, отчёты bench, создаётся бэкендом
 ```
 
 ---
