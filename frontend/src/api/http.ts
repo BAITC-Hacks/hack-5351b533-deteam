@@ -1,50 +1,32 @@
-import type {
-  CallDetails,
-  CallSummary,
-  Client,
-  Scenario,
-  Session,
-  SupervisorStats,
-  Turn,
-  TurnFeedback,
-  TurnInput,
-  VoiceRouterApi,
-} from './types'
+import type { Case, CaseCreate, Catalog, Client, SessionDetail, SessionSummary, Stats } from './types'
 
-// Все запросы идут на /api, в dev Vite проксирует их на бэкенд (см. vite.config.ts)
-const BASE = '/api'
-
+// REST из /contracts/openapi.yaml. В dev Vite проксирует /api и /ws на бэкенд (см. vite.config.ts)
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, init)
+  const res = await fetch('/api' + path, init)
   if (!res.ok) {
-    throw new Error(`${init?.method ?? 'GET'} ${path} → ${res.status} ${await res.text()}`)
+    const body = await res.text().catch(() => '')
+    throw new Error(`${init?.method ?? 'GET'} /api${path} → ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`)
   }
   return res.status === 204 ? (undefined as T) : res.json()
 }
 
-const json = (body: unknown): RequestInit => ({
+const post = (body: unknown): RequestInit => ({
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 })
 
-export const httpApi: VoiceRouterApi = {
-  listClients: () => request<Client[]>('/clients'),
-  listScenarios: () => request<Scenario[]>('/scenarios'),
-  startSession: (clientId) => request<Session>('/sessions', json({ client_id: clientId })),
+export const api = {
+  clients: () => request<Client[]>('/clients'),
+  catalog: () => request<Catalog>('/catalog'),
+  stats: () => request<Stats>('/stats'),
+  sessions: () => request<SessionSummary[]>('/sessions?limit=200'),
+  session: (id: string) => request<SessionDetail>(`/sessions/${encodeURIComponent(id)}`),
+  cases: () => request<Case[]>('/cases'),
+  createCase: (body: CaseCreate) => request<Case>('/cases', post(body)),
+}
 
-  sendTurn(sessionId, input: TurnInput) {
-    const path = `/sessions/${sessionId}/turns`
-    if (input.kind === 'text') return request<Turn>(path, json({ text: input.text }))
-    const form = new FormData()
-    form.append('audio', input.audio, 'utterance.webm')
-    return request<Turn>(path, { method: 'POST', body: form })
-  },
-
-  endSession: (sessionId) => request<void>(`/sessions/${sessionId}/end`, { method: 'POST' }),
-  getStats: () => request<SupervisorStats>('/supervisor/stats'),
-  listCalls: () => request<CallSummary[]>('/sessions'),
-  getCall: (sessionId) => request<CallDetails>(`/sessions/${sessionId}`),
-  sendFeedback: (turnId, feedback: TurnFeedback) =>
-    request<void>(`/turns/${turnId}/feedback`, json(feedback)),
+/** URL вебсокета на том же хосте, что и страница (в dev его проксирует Vite) */
+export function wsUrl(path: string) {
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${path}`
 }
