@@ -1,0 +1,11 @@
+.session-recording { display: grid; gap: 8px; padding: 0 0 14px; margin: 0 0 14px; border-bottom: 1px solid var(--border); }
+.session-recording-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.session-recording-duration { color: var(--muted); font: 600 12px/1.3 ui-monospace, Consolas, monospace; }
+.session-recording-ready { display: grid; gap: 8px; min-width: 0; }
+.session-recording-ready audio { display: block; width: 100%; height: 48px; }
+.session-recording-unavailable { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.session-recording-refresh { padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--accent-hover); font-size: 12px; }
+.session-recording-refresh:hover { border-color: var(--accent); background: var(--accent-bg); }
+.session-recording-jump { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; color: var(--muted); font-size: 11px; }
+.session-recording-jump-button { padding: 4px 9px; border: 1px solid #c6e4d9; border-radius: 7px; background: var(--accent-bg); color: var(--accent-hover); font-size: 12px; font-weight: 650; }
+.session-recording-jump-button:hover { border-color: var(--accent); }

@@ -1,7 +1,7 @@
 import { TARGET_ROUTER_MS, type LatencyStage, type Stats } from '../../api'
 import { useCatalog } from '../../lib/catalog-context'
 import { DECISION_LABEL, LANG_LABEL, STAGES, ms, pct, totalTone } from '../../lib/format'
-import { BarList, Kpi, Panel, TotalLatency } from '../ui'
+import { BarList, Kpi, TotalLatency } from '../ui'
 
 const TOP_SCENARIOS = 8
 
@@ -14,8 +14,8 @@ export function StatsKpis({ stats }: { stats: Stats }) {
   return (
     <div className="kpis">
       <Kpi label="Звонков" value={stats.sessions} />
-      <Kpi label="Переведено оператору" value={pct(stats.handoff_rate)} hint="Доля ходов, где робот передал разговор человеку" />
-      <Kpi label="Уточнения" value={pct(stats.unclear_rate)} hint="Робот не понял с первого раза и переспросил (SYS_UNCLEAR)" />
+      <Kpi label="Ходы с переводом оператору" value={pct(stats.handoff_rate)} hint="Доля ходов, где робот передал разговор человеку" />
+      <Kpi label="Ходы с уточнением" value={pct(stats.unclear_rate)} hint="Доля ходов, где робот не понял с первого раза и переспросил (SYS_UNCLEAR)" />
       <Kpi
         label="Время ответа, p95"
         value={total ? <TotalLatency value={total.p95} /> : '—'}
@@ -33,7 +33,7 @@ export function StatsBreakdown({ stats }: { stats: Stats }) {
   const stageRows: { key: LatencyStage; label: string }[] = [...STAGES, { key: 'total', label: 'Итого до ответа' }]
 
   return (
-    <Panel title="Распределения" hint="По всем ходам всех сессий">
+    <div>
       <p className="muted small">
         Ходов: <span className="num">{stats.turns}</span> · ответ шаблоном без LLM: <span className="num">{pct(stats.template_rate)}</span> ·
         спекулятивные попадания роутера: <span className="num">{pct(stats.speculative_hit_rate)}</span>
@@ -92,6 +92,6 @@ export function StatsBreakdown({ stats }: { stats: Stats }) {
           <BarList rows={stats.confidence_histogram.map((b) => ({ key: b.bucket, label: b.bucket, value: b.count }))} />
         </div>
       </div>
-    </Panel>
+    </div>
   )
 }

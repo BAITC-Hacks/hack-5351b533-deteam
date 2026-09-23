@@ -88,6 +88,11 @@ paths:
                       transcript: {type: array, items: {type: object, properties: {turn: {type: integer}, role: {enum: [client, bot]}, text: {type: string}, lang: {type: string}}}}
                       traces: {type: array, items: {$ref: "trace.schema.json"}}
                       final_state: {$ref: "dialog-state.schema.json"}
+                      recording:
+                        description: Optional until recording is supported. Null means no recording for this session.
+                        oneOf:
+                          - $ref: "#/components/schemas/SessionRecording"
+                          - type: "null"
         "404": {$ref: "#/components/responses/NotFound"}
   /api/sessions/{session_id}/events:
     get:
@@ -248,6 +253,25 @@ components:
     Error:
       type: object
       properties: {error: {type: object, properties: {code: {type: string}, message: {type: string}}}}
+    SessionRecording:
+      description: Ready URL must be usable by an HTML audio element. Optional timebase confirms alignment with session events.
+      oneOf:
+        - type: object
+          required: [status, url, mime_type, duration_ms]
+          properties:
+            status: {const: ready}
+            url: {type: string, format: uri-reference, description: "Same-origin URL with cookie authentication or signed URL; supports HTTP Range for seeking."}
+            mime_type: {type: string, example: audio/mp4}
+            duration_ms: {type: integer, minimum: 0}
+            timebase: {const: session_start, description: "Optional. Include only when recording position 0 ms is verified to equal event t=0 and silence/interruptions remain on this axis."}
+        - type: object
+          required: [status]
+          properties:
+            status: {enum: [processing, unavailable, failed]}
+            url: {type: "null"}
+            mime_type: {type: [string, "null"]}
+            duration_ms: {type: [integer, "null"], minimum: 0}
+            timebase: {const: session_start}
     ScenarioBrief:
       type: object
       properties:

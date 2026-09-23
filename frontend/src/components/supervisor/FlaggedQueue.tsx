@@ -1,16 +1,16 @@
 import { Link } from 'react-router'
 import type { Stats } from '../../api'
-import { ConfidenceBadge, DecisionBadge, Empty, Panel, ScenarioChip } from '../ui'
+import { ConfidenceBadge, DecisionBadge, Empty, ScenarioChip } from '../ui'
 
 /** Очередь спорных ходов из stats.flagged_turns: низкая уверенность, SYS_UNCLEAR, ручные пометки */
 export function FlaggedQueue({ turns }: { turns: Stats['flagged_turns'] }) {
   return (
-    <Panel title={`Спорные ходы · ${turns.length}`} hint="Где робот сомневался. Клик — ход в контексте всего звонка">
+    <div>
       {turns.length ? (
         <ul className="flagged">
           {turns.map((t) => (
             <li key={`${t.session_id}-${t.turn}`}>
-              <Link to={`/supervisor/sessions/${encodeURIComponent(t.session_id)}?turn=${t.turn}`}>
+              <Link to={`/supervisor/sessions/${encodeURIComponent(t.session_id)}?turn=${t.turn}`} onClick={() => window.scrollTo(0, 0)}>
                 <div className="flagged-text">«{t.transcript}»</div>
                 <div className="row gap wrap">
                   <ScenarioChip id={t.scenario_id} />
@@ -27,6 +27,6 @@ export function FlaggedQueue({ turns }: { turns: Stats['flagged_turns'] }) {
       ) : (
         <Empty>Спорных ходов нет</Empty>
       )}
-    </Panel>
+    </div>
   )
 }

@@ -1,54 +1,74 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
-import { FLAG_CONFIDENCE, api, type Case, type DialogState, type SessionDetail, type Trace } from '../api'
+import { useParams, useSearchParams } from 'react-router'
+import { FLAG_CONFIDENCE, api, type Case, type SessionDetail, type Trace } from '../api'
 import { CaseForm } from '../components/supervisor/CaseForm'
+import { SessionInspector } from '../components/supervisor/SessionInspector'
 import { SessionOutcome } from '../components/supervisor/SessionOutcome'
-import { TracePanel } from '../components/trace/TracePanel'
+import { SessionRecordingPlayer } from '../components/supervisor/SessionRecordingPlayer'
+import { buildSessionTimeline, SessionTimeline, type TurnTiming } from '../components/supervisor/SessionTimeline'
 import { Badge, DecisionBadge, Empty, ErrorBox, LangBadge, Panel, ScenarioChip, TotalLatency } from '../components/ui'
 import { useDebounced, useResource } from '../hooks/useResource'
 import { useCatalog } from '../lib/catalog-context'
-import { CHANNEL_LABEL, FAST_PATH_LABEL, STACK_REASON_LABEL, dateTime, duration } from '../lib/format'
+import { CHANNEL_LABEL, dateTime } from '../lib/format'
 import { useLiveEvents } from '../lib/live-context'
 
 const isDoubtful = (t: Trace) => (t.scenarios[0]?.confidence ?? 0) < FLAG_CONFIDENCE || t.scenarios.some((s) => s.scenario_id === 'SYS_UNCLEAR')
 
-/** Карточка звонка: лента тем, весь диалог слева, трассировка выбранного хода справа */
+/** Перемонтируем карточку при смене звонка, чтобы старые данные не показывались под новым URL. */
 export function SessionPage() {
   const { id = '' } = useParams()
+  return <SessionDetailView key={id} id={id} />
+}
+
+/** Карточка звонка: шкала разговора, длинный транскрипт и общий разбор справа. */
+function SessionDetailView({ id }: { id: string }) {
   const [params, setParams] = useSearchParams()
   const { client } = useCatalog()
   const session = useResource(() => api.session(id), `session:${id}`)
+  const events = useResource(() => api.sessionEvents(id), `session-events:${id}`)
   const cases = useResource(() => api.cases(), 'cases')
   const [created, setCreated] = useState<Case[]>([]) // мок не сохраняет кейсы — держим созданные локально
+  const [inspectorTab, setInspectorTab] = useState<'turn' | 'outcome'>('turn')
 
-  const reload = useDebounced(session.reload)
+  const reload = useDebounced(() => { session.reload(); events.reload() })
   useLiveEvents(reload, (e) => e.session_id === id)
 
   if (session.error) return <ErrorBox error={session.error} />
   const s = session.data
-  if (!s) return <Empty>Загрузка…</Empty>
+  if (!s || s.session_id !== id) return <div className="session-empty-state"><Empty>Загрузка звонка…</Empty></div>
 
-  const selectedTurn = Number(params.get('turn')) || s.traces.at(-1)?.turn || 0
-  const trace = s.traces.find((t) => t.turn === selectedTurn) ?? null
-  const select = (turn: number) => setParams({ turn: String(turn) }, { replace: true })
   const casesFor = (turn: number) =>
     [...(cases.data ?? []), ...created].filter((c) => c.session_id === id && c.turn === turn)
+  const requestedTurn = Number(params.get('turn'))
+  const defaultTurn = s.flagged && s.ended_at
+    ? s.traces.find((t) => isDoubtful(t) || casesFor(t.turn).length > 0)?.turn
+    : undefined
+  const selectedTurn = (requestedTurn && s.traces.some((t) => t.turn === requestedTurn) ? requestedTurn : undefined)
+    ?? defaultTurn
+    ?? s.traces.at(-1)?.turn
+    ?? 0
+  const trace = s.traces.find((t) => t.turn === selectedTurn) ?? null
+  const timeline = buildSessionTimeline(events.data, s.traces)
+  const select = (turn: number) => {
+    setInspectorTab('turn')
+    setParams({ turn: String(turn) }, { replace: true })
+  }
   const c = client(s.client_id)
 
   return (
-    <div className="stack">
+    <div className="stack session-detail" id="selected-call">
       <Panel
         title={c?.full_name ?? s.caller_phone ?? 'Клиент не опознан'}
         hint={[
           CHANNEL_LABEL[s.channel],
           s.caller_phone ?? c?.phone,
-          `${dateTime(s.started_at)} · ${duration(s.started_at, s.ended_at)}`,
+          dateTime(s.started_at),
           `${s.turns} ходов`,
           `каталог ${s.catalog_version}`,
         ]
           .filter(Boolean)
           .join(' · ')}
-        actions={<Link to="/supervisor">← Все звонки</Link>}
+        className="session-header"
       >
         <div className="row gap wrap">
           <SessionOutcome s={s} />
@@ -58,57 +78,48 @@ export function SessionPage() {
           ))}
           <span className="muted small">медиана до ответа</span> <TotalLatency value={s.latency_total_p50} />
         </div>
-        <h3>Лента тем</h3>
-        <TopicRibbon traces={s.traces} selected={selectedTurn} onSelect={select} />
+        <h3>Линия времени</h3>
+        <SessionTimeline model={timeline} traces={s.traces} selected={selectedTurn} onSelect={select} />
       </Panel>
 
-      <div className="split">
-        <div className="stack">
-          <Panel title="Диалог" hint="Полный транскрипт. Под репликой клиента — что решил роутер. Клик — подробности справа" className="dialog-panel">
-            <Dialog session={s} selected={selectedTurn} onSelect={select} hasCase={(t) => casesFor(t).length > 0} />
-          </Panel>
-          {s.final_state && <FinalState state={s.final_state} />}
-        </div>
-
-        {trace ? (
-          <TracePanel
-            trace={trace}
-            extra={<CaseForm sessionId={id} trace={trace} existing={casesFor(trace.turn)} onCreated={(k) => setCreated((p) => [...p, k])} />}
+      <div className="split session-layout">
+        <Panel title="Диалог" hint="Реплики и время от начала звонка. Выберите ход для разбора справа" className="dialog-panel">
+          <SessionRecordingPlayer
+            recording={s.recording}
+            ended={Boolean(s.ended_at)}
+            selectedTurn={selectedTurn}
+            selectedTiming={timeline.turns.get(selectedTurn)}
+            onRefresh={session.reload}
           />
-        ) : (
-          <Panel title="Трассировка">
-            <Empty>Выберите ход в диалоге</Empty>
-          </Panel>
-        )}
+          <Dialog session={s} selected={selectedTurn} onSelect={select} hasCase={(t) => casesFor(t).length > 0} timings={timeline.turns} />
+        </Panel>
+
+        <SessionInspector
+          trace={trace}
+          finalState={s.final_state}
+          ended={Boolean(s.ended_at)}
+          activeTab={inspectorTab}
+          onTabChange={setInspectorTab}
+          extra={trace && <CaseForm key={`${id}-${trace.turn}`} sessionId={id} trace={trace} existing={casesFor(trace.turn)} onCreated={(k) => setCreated((p) => [...p, k])} />}
+        />
       </div>
     </div>
   )
 }
 
-/** Как шёл разговор: по шагу на ход клиента */
-function TopicRibbon({ traces, selected, onSelect }: { traces: Trace[]; selected: number; onSelect: (turn: number) => void }) {
-  if (!traces.length) return <span className="muted">—</span>
-  return (
-    <div className="ribbon">
-      {traces.map((t, i) => (
-        <span key={t.turn} className="ribbon-item">
-          {i > 0 && <span className="ribbon-arrow">→</span>}
-          <button className={`ribbon-step ${t.turn === selected ? 'ribbon-selected' : ''} ${isDoubtful(t) ? 'ribbon-doubt' : ''}`} onClick={() => onSelect(t.turn)}>
-            <span className="muted small">{t.turn}</span>
-            {t.decision === 'continue' || t.decision === 'confirm' || t.decision === 'goodbye' ? (
-              <DecisionBadge decision={t.decision} />
-            ) : (
-              t.scenarios.map((s) => <ScenarioChip key={s.scenario_id} id={s.scenario_id} />)
-            )}
-            {t.decision === 'handoff' && <DecisionBadge decision="handoff" />}
-          </button>
-        </span>
-      ))}
-    </div>
-  )
+function formatOffset(ms: number) {
+  const seconds = Math.floor(ms / 1000)
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-function Dialog({ session, selected, onSelect, hasCase }: { session: SessionDetail; selected: number; onSelect: (turn: number) => void; hasCase: (turn: number) => boolean }) {
+function formatInterval(start?: number, end?: number) {
+  if (start === undefined) return null
+  const from = formatOffset(start)
+  const to = end === undefined ? from : formatOffset(end)
+  return from === to ? from : `${from}–${to}`
+}
+
+function Dialog({ session, selected, onSelect, hasCase, timings }: { session: SessionDetail; selected: number; onSelect: (turn: number) => void; hasCase: (turn: number) => boolean; timings: Map<number, TurnTiming> }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const selectedRef = useRef<HTMLDivElement>(null)
   // Прокручиваем только ленту диалога, а не всю страницу (scrollIntoView двигает и окно)
@@ -125,11 +136,15 @@ function Dialog({ session, selected, onSelect, hasCase }: { session: SessionDeta
   const turns = [...new Set(session.transcript.map((m) => m.turn))].sort((a, b) => a - b)
   return (
     <div className="dialog" ref={boxRef}>
+      {!turns.length && <Empty>Транскрипт пока пуст</Empty>}
       {turns.map((turn) => {
         const msgs = session.transcript.filter((m) => m.turn === turn)
         const trace = session.traces.find((t) => t.turn === turn)
+        const timing = timings.get(turn)
         const clientMsg = msgs.find((m) => m.role === 'client')
         const botMsgs = msgs.filter((m) => m.role === 'bot')
+        const clientTime = formatInterval(timing?.clientStartMs, timing?.clientEndMs)
+        const botTime = formatInterval(timing?.botStartMs, timing?.botEndMs)
         return (
           <div
             key={turn}
@@ -141,6 +156,7 @@ function Dialog({ session, selected, onSelect, hasCase }: { session: SessionDeta
               <div className="bubble bubble-user">
                 <div className="bubble-meta">
                   Клиент · ход {turn} <LangBadge lang={clientMsg.lang} />
+                  {clientTime && <span className="dialog-time">{clientTime}</span>}
                 </div>
                 {clientMsg.text}
               </div>
@@ -149,18 +165,26 @@ function Dialog({ session, selected, onSelect, hasCase }: { session: SessionDeta
               <div className="turn-summary">
                 <DecisionBadge decision={trace.decision} />
                 {trace.scenarios.map((s) => (
-                  <ScenarioChip key={s.scenario_id} id={s.scenario_id} confidence={s.confidence} />
+                  <ScenarioChip key={s.scenario_id} id={s.scenario_id} />
                 ))}
-                {trace.fast_path && <Badge tone="ok">без роутера: {FAST_PATH_LABEL[trace.fast_path] ?? trace.fast_path}</Badge>}
-                <TotalLatency value={trace.latency_ms.total} />
                 {isDoubtful(trace) && <Badge tone="warn">сомневался</Badge>}
                 {hasCase(turn) && <Badge tone="bad">✗ отмечено</Badge>}
+                <button
+                  type="button"
+                  className="turn-detail-button"
+                  aria-pressed={turn === selected}
+                  aria-label={`Разобрать ход ${turn}`}
+                  onClick={(event) => { event.stopPropagation(); onSelect(turn) }}
+                >
+                  {turn === selected ? 'Ход выбран' : 'Подробности'}
+                </button>
               </div>
             )}
             {botMsgs.map((m, i) => (
               <div key={i} className="bubble bubble-bot">
                 <div className="bubble-meta">
                   Бот {turn === 0 && '· приветствие'} <LangBadge lang={m.lang} />
+                  {botTime && <span className="dialog-time">{botTime}</span>}
                 </div>
                 {m.text}
               </div>
@@ -169,66 +193,5 @@ function Dialog({ session, selected, onSelect, hasCase }: { session: SessionDeta
         )
       })}
     </div>
-  )
-}
-
-/** final_state (dialog-state.schema.json): чем закончился диалог */
-function FinalState({ state }: { state: DialogState }) {
-  const slots = Object.entries(state.slots ?? {})
-  return (
-    <Panel title="Состояние в конце звонка" hint="Кто клиент, что сделано, что осталось отложенным">
-      <table className="kv">
-        <tbody>
-          <tr>
-            <td>Клиент</td>
-            <td>{state.client ? `${state.client.full_name} · опознан по ${state.client.identified_by}` : 'не опознан'}</td>
-          </tr>
-          <tr>
-            <td>Завершённые сценарии</td>
-            <td>
-              <span className="row gap wrap">{state.completed.length ? state.completed.map((id) => <ScenarioChip key={id} id={id} />) : '—'}</span>
-            </td>
-          </tr>
-          <tr>
-            <td>Активный</td>
-            <td>{state.active ? <><ScenarioChip id={state.active.scenario_id} /> <span className="muted small">шаг {state.active.step}</span></> : '—'}</td>
-          </tr>
-          <tr>
-            <td>Отложено</td>
-            <td>
-              {state.stack.length
-                ? state.stack.map((x) => (
-                    <div key={x.scenario_id}>
-                      <ScenarioChip id={x.scenario_id} /> <span className="muted small">{STACK_REASON_LABEL[x.reason] ?? x.reason}</span>
-                    </div>
-                  ))
-                : '—'}
-            </td>
-          </tr>
-          {state.pending_confirmation && (
-            <tr>
-              <td>Ждёт подтверждения</td>
-              <td>
-                <code>{state.pending_confirmation.action}</code> {state.pending_confirmation.spoken_summary}
-              </td>
-            </tr>
-          )}
-          {state.handoff && (
-            <tr>
-              <td>Перевод</td>
-              <td>очередь {state.handoff.queue}</td>
-            </tr>
-          )}
-          {slots.map(([k, v]) => (
-            <tr key={k}>
-              <td>
-                <code>{k}</code>
-              </td>
-              <td>{typeof v === 'string' ? v : JSON.stringify(v)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Panel>
   )
 }

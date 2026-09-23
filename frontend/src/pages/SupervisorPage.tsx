@@ -1,154 +1,108 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
-import { api, type Channel, type SessionSummary } from '../api'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Outlet, useMatch } from 'react-router'
+import { api } from '../api'
 import { FlaggedQueue } from '../components/supervisor/FlaggedQueue'
-import { SessionOutcome } from '../components/supervisor/SessionOutcome'
+import { SessionJournal } from '../components/supervisor/SessionJournal'
 import { StatsBreakdown, StatsKpis } from '../components/supervisor/StatsPanel'
-import { Badge, Empty, ErrorBox, LangBadge, Panel, ScenarioChip, TotalLatency } from '../components/ui'
+import { ErrorBox } from '../components/ui'
 import { useDebounced, useResource } from '../hooks/useResource'
-import { useCatalog } from '../lib/catalog-context'
-import { CHANNEL_LABEL, dateTime, duration } from '../lib/format'
 import { useLiveEvents } from '../lib/live-context'
 
-const FILTERS: { id: string; label: string; test: (s: SessionSummary) => boolean }[] = [
-  { id: 'all', label: 'Все', test: () => true },
-  { id: 'live', label: 'Идут сейчас', test: (s) => !s.ended_at },
-  { id: 'flagged', label: 'Спорные', test: (s) => s.flagged },
-  { id: 'handoff', label: 'Переведены оператору', test: (s) => !!s.handoff_queue },
-]
-
-// Эти события меняют журнал или статистику
 const LIVE_TYPES = new Set(['session.created', 'session.closed', 'turn.trace', 'case.created'])
 
-/** Супервизор: сводка, журнал всех звонков, очередь спорных ходов, распределения */
+/** Единое рабочее место: карточка выбранного звонка и журнал живут на одном экране. */
 export function SupervisorPage() {
-  const navigate = useNavigate()
-  const { client } = useCatalog()
+  const match = useMatch('/supervisor/sessions/:id')
+  const selectedId = match?.params.id
   const sessions = useResource(() => api.sessions(), 'sessions')
   const stats = useResource(() => api.stats(), 'stats')
-  const [filter, setFilter] = useState('all')
-  const [channel, setChannel] = useState<Channel | ''>('')
-  const [lang, setLang] = useState('')
+  const [showFlagged, setShowFlagged] = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   const reloadAll = useDebounced(() => {
     sessions.reload()
     stats.reload()
   })
-  useLiveEvents(reloadAll, (e) => LIVE_TYPES.has(e.type))
+  useLiveEvents(reloadAll, (event) => LIVE_TYPES.has(event.type))
 
-  const all = sessions.data ?? []
-  const scoped = all.filter((s) => (!channel || s.channel === channel) && (!lang || s.languages.includes(lang as SessionSummary['languages'][number])))
-  const active = FILTERS.find((f) => f.id === filter)!
-  const rows = scoped.filter(active.test).sort((a, b) => b.started_at.localeCompare(a.started_at))
+  // Журнал находится под карточкой: после выбора другого звонка показываем его начало.
+  useEffect(() => {
+    if (selectedId) window.scrollTo(0, 0)
+  }, [selectedId])
 
   return (
-    <div className="stack">
-      <ErrorBox error={sessions.error ?? stats.error} />
-      {stats.data && <StatsKpis stats={stats.data} />}
-
-      <div className="split-wide">
-        <Panel
-          title="Журнал звонков"
-          hint="Все звонки, новые сверху. Обновляется сам по живому потоку. Клик — весь диалог и трассировка каждого хода"
-          actions={
-            <div className="row gap">
-              <select value={channel} onChange={(e) => setChannel(e.target.value as Channel | '')} title="Канал">
-                <option value="">Все каналы</option>
-                {Object.entries(CHANNEL_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-              <select value={lang} onChange={(e) => setLang(e.target.value)} title="Язык клиента">
-                <option value="">Любой язык</option>
-                <option value="ru">RU</option>
-                <option value="kk">KZ</option>
-                <option value="mixed">RU+KZ</option>
-              </select>
-            </div>
-          }
-        >
-          <div className="tabs">
-            {FILTERS.map((f) => (
-              <button key={f.id} className={f.id === filter ? 'tab tab-active' : 'tab'} onClick={() => setFilter(f.id)}>
-                {f.label} <span className="muted">{scoped.filter(f.test).length}</span>
-              </button>
-            ))}
-          </div>
-
-          {rows.length ? (
-            <div className="table-scroll">
-              <table className="table clickable">
-                <thead>
-                  <tr>
-                    <th>Начало</th>
-                    <th>Клиент</th>
-                    <th>Сценарии</th>
-                    <th className="right">Ходов</th>
-                    <th>Язык</th>
-                    <th className="right" title="Медиана задержки до ответа по ходам звонка">Задержка p50</th>
-                    <th>Итог</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((s) => {
-                    const c = client(s.client_id)
-                    return (
-                      <tr
-                        key={s.session_id}
-                        onClick={() => navigate(`/supervisor/sessions/${encodeURIComponent(s.session_id)}`)}
-                        className={`${!s.ended_at ? 'row-live' : ''} ${s.flagged ? 'row-flagged' : ''}`}
-                      >
-                        <td className="nowrap">
-                          {dateTime(s.started_at)}
-                          <div className="muted small">
-                            {CHANNEL_LABEL[s.channel]} · {duration(s.started_at, s.ended_at)}
-                          </div>
-                        </td>
-                        <td className="nowrap">
-                          {c?.full_name ?? <span className="muted">не опознан</span>}
-                          <div className="muted small">{s.caller_phone ?? c?.phone ?? ''}</div>
-                        </td>
-                        <td>
-                          <span className="row gap wrap">
-                            {s.scenarios.map((id) => (
-                              <ScenarioChip key={id} id={id} />
-                            ))}
-                          </span>
-                        </td>
-                        <td className="right num">{s.turns}</td>
-                        <td>
-                          <span className="row gap wrap">
-                            {s.languages.map((l) => (
-                              <LangBadge key={l} lang={l} />
-                            ))}
-                          </span>
-                        </td>
-                        <td className="right">
-                          <TotalLatency value={s.latency_total_p50} />
-                        </td>
-                        <td>
-                          <span className="row gap wrap">
-                            <SessionOutcome s={s} />
-                            {s.flagged && <Badge tone="warn">спорный</Badge>}
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty>{sessions.data ? 'Нет звонков по этому фильтру' : 'Загрузка…'}</Empty>
-          )}
-        </Panel>
-
-        {stats.data && <FlaggedQueue turns={stats.data.flagged_turns} />}
+    <div className="stack supervisor-page">
+      <div className="supervisor-header">
+        <div>
+          <p className="supervisor-eyebrow">Voice Router / Супервизор</p>
+          <h1>{selectedId ? 'Разбор звонка' : 'Рабочая панель'}</h1>
+          <p className="muted">{selectedId ? 'Диалог и решения роутера по ходам. Журнал звонков — ниже.' : 'Последние звонки, сигналы для проверки и общая статистика.'}</p>
+        </div>
       </div>
 
-      {stats.data && <StatsBreakdown stats={stats.data} />}
+      <ErrorBox error={sessions.error ?? stats.error} />
+      <Outlet />
+
+      {!selectedId && stats.data && (
+        <div>
+          <p className="muted small stats-scope">Сводка по всем звонкам · фильтры журнала на эти показатели не влияют</p>
+          <StatsKpis stats={stats.data} />
+        </div>
+      )}
+
+      <SessionJournal sessions={sessions.data} selectedId={selectedId} />
+
+      {stats.data && (
+        <div className="stack supervisor-tools">
+          <Disclosure
+            id="flagged-turns"
+            title="Спорные ходы"
+            count={stats.data.flagged_turns.length}
+            description="Реплики, где решение роутера стоит проверить"
+            open={showFlagged}
+            onToggle={() => setShowFlagged((value) => !value)}
+          >
+            <FlaggedQueue turns={stats.data.flagged_turns} />
+          </Disclosure>
+          <Disclosure
+            id="stats-breakdown"
+            title="Распределения"
+            description="Сценарии, решения и задержка по всем звонкам"
+            open={showBreakdown}
+            onToggle={() => setShowBreakdown((value) => !value)}
+          >
+            <StatsBreakdown stats={stats.data} />
+          </Disclosure>
+        </div>
+      )}
     </div>
+  )
+}
+
+function Disclosure({
+  id, title, count, description, open, onToggle, children,
+}: {
+  id: string
+  title: string
+  count?: number
+  description: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <section className="disclosure">
+      <button className="disclosure-trigger" type="button" aria-expanded={open} aria-controls={id} onClick={onToggle}>
+        <span className="disclosure-heading">
+          <span className="disclosure-title">{title}</span>
+          {count !== undefined && <span className={`disclosure-count ${count === 0 ? 'disclosure-count-empty' : ''}`}>{count}</span>}
+          <span className="muted small">{description}</span>
+        </span>
+        <span className="disclosure-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div id={id} className="disclosure-content" hidden={!open}>
+        {children}
+      </div>
+    </section>
   )
 }

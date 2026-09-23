@@ -16,8 +16,18 @@ export default function App() {
     <LiveProvider>
       <CatalogProvider>
         <div className="app">
-          <nav className="nav">
-            <span className="brand">Voice Router</span>
+          <nav className="nav" aria-label="Основная навигация">
+            <NavLink to="/supervisor" className="brand" aria-label="Voice Router — открыть супервизора">
+              <span className="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <path d="M10 9h7a6 6 0 0 1 6 6v8M10 9v14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                  <circle cx="10" cy="9" r="3" fill="currentColor" />
+                  <circle cx="10" cy="23" r="3" fill="currentColor" />
+                  <circle cx="23" cy="23" r="3" fill="currentColor" />
+                </svg>
+              </span>
+              <span>Voice Router</span>
+            </NavLink>
             <NavLink to="/call">Звонок</NavLink>
             <NavLink to="/supervisor">Супервизор</NavLink>
             <NavLink to="/evolution">Эволюция</NavLink>
@@ -28,8 +38,9 @@ export default function App() {
           <main className="main">
             <Routes>
               <Route path="/" element={<Navigate to="/supervisor" replace />} />
-              <Route path="/supervisor" element={<SupervisorPage />} />
-              <Route path="/supervisor/sessions/:id" element={<SessionPage />} />
+              <Route path="/supervisor" element={<SupervisorPage />}>
+                <Route path="sessions/:id" element={<SessionPage />} />
+              </Route>
               <Route path="/scenarios" element={<ScenariosPage />} />
               <Route path="/call" element={<CallPage />} />
               <Route path="/evolution" element={<EvolutionPage />} />

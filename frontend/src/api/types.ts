@@ -140,11 +140,29 @@ export interface SessionSummary {
   flagged: boolean // ход с низкой уверенностью, SYS_UNCLEAR или ручная пометка
 }
 
+/** Запись звонка: совпадение её оси с t событий подтверждает timebase. */
+export type SessionRecording =
+  | {
+      status: 'ready'
+      url: string
+      mime_type: string
+      duration_ms: number
+      timebase?: 'session_start'
+    }
+  | {
+      status: 'processing' | 'unavailable' | 'failed'
+      url?: null
+      mime_type?: string | null
+      duration_ms?: number | null
+      timebase?: 'session_start'
+    }
+
 /** GET /api/sessions/{id} */
 export interface SessionDetail extends SessionSummary {
   transcript: { turn: number; role: 'client' | 'bot'; text: string; lang: string }[]
   traces: Trace[]
   final_state: DialogState | null
+  recording?: SessionRecording | null
 }
 
 export type LatencyStage = keyof LatencyMs
