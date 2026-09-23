@@ -20,6 +20,7 @@ def _early_lang(sess, text, e):
 
 def _early_ok(sess, e):
     """Ранний ack только для нового реального сценария с уверенностью запуска вне подтверждений/офферов."""
+    if e.get("scenario_id") in getattr(sess, "done_frames", {}): return False
     sid = e.get("scenario_id")
     if not sid or sid.startswith("SYS_") or e.get("confidence", 0) < config.CONF_RUN: return False
     if e.get("is_continuation") or e.get("confirmation") is not None: return False
@@ -70,13 +71,14 @@ async def process_turn(sess, text, *, t0=None, stt_ms=0, emit=None, speak=None, 
     meta = (r or {}).get("_meta") or {}
     router_ms = meta.get("total_ms") or (meta.get("latency_ms", 0) + ((r or {}).get("second_opinion") or {}).get("latency_ms", 0))
     triage_ms = max(0, int((t_u1 - t_u0) * 1000) - router_ms)
+    prev_done = set(sess.done_frames)          # тема уже пройдена в этом звонке — вводное «Расскажу.» не повторяем
     items = sess.execute(u)
     for e in sess.events[ev_start:]:
         await emit({**e})
     lang = sess.language
     # --- ответ
     new_first = next((it for it in items if it.get("new") and it.get("scenario") and it["kind"] not in ("deferred",)), None)
-    runs = new_first is not None and u["decision"] in ("run", "offer_yes")
+    runs = new_first is not None and u["decision"] in ("run", "offer_yes") and new_first["scenario"] not in prev_done
     early_ack = {"spoken": early["spoken"], "scenario_id": early["scenario_id"], "matched_final": bool(runs and new_first["scenario"] == early["scenario_id"])}
     if early["spoken"]:
         ack = early["ack"]              # уже произнесён; второй раз не говорим, LLM получает его как ack_already_spoken

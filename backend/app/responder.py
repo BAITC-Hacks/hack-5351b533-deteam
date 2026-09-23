@@ -131,7 +131,7 @@ Rules:
 - Never read full emails or IIN: emails masked like r***@mail.example.
 - items kinds: done = report the result (use style_example as a guide); ask = ask exactly for ask_for; preview = ONE statement sentence with the key details (what, when/amount; not a question), then exactly "Подтверждаете?" (kk: "Растайсыз ба?") as the only question (irreversible action); offer = give the facts and ask the question; handoff = say you are connecting to a specialist who already sees the context; deferred = say briefly you will help with it right after; cancelled = acknowledge the client postponed it; offer_return = ask if they want to return to that topic; error in facts = explain the reason in one sentence and offer the nearest option.
 - Empathy first for claims, complaints and accidents; calm and fast for urgent cases.
-- Address the client by first name only if client_name is given and it is the first answer about this topic."""
+- Use the client's first name only if client_name is given (it is given once per call). Never guess or invent a name; if client_name is null, do not use any name."""
 
 ACTION_NAMES = {"create_policy": {"ru": "оформление полиса", "kk": "полисті рәсімдеу"}, "renew_policy": {"ru": "продление полиса", "kk": "полисті ұзарту"},
                 "update_policy": {"ru": "изменение полиса", "kk": "полисті өзгерту"}, "cancel_policy": {"ru": "расторжение полиса", "kk": "полисті бұзу"},
@@ -165,7 +165,10 @@ def llm_payload(sess, text, items, ack):
     main = [x for x in out if x["kind"] not in ("deferred", "offer_return")]
     side = len(main) < len(out)          # есть вопрос «вернёмся к…» / «потом займёмся…»
     mx = min(3, 2 + (len(main) > 1 or side)) if not ack else 2
-    return {"language": lang, "client_name": first_name(sess.client["full_name"], lang) if sess.client else None,
+    name = None
+    if sess.client and not getattr(sess, "name_used", False):
+        name = first_name(sess.client["full_name"], lang); sess.name_used = True
+    return {"language": lang, "client_name": name,
             "ack_already_spoken": ack, "max_sentences": mx, "client_said": text, "items": out}
 
 async def stream_llm(payload):

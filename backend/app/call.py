@@ -136,6 +136,7 @@ class Call:
         s = self.sess
         await HUB.broadcast({"type": "session.created", "t": 0, "session_id": s.id, "turn": None, "channel": s.channel, "caller_phone": s.caller_phone, "started_at": HUB.sessions[s.id]["started_at"]})
         greeting = speech.greeting(s.client, s.language)
+        if s.client: s.name_used = True          # по имени уже поздоровались — в ответах LLM имя не повторяем
         from .catalog import CATALOG
         await self.emit({"type": "session.ready", "channel": s.channel,
                          "audio_in": {"format": "pcm_s16le", "sample_rate": 16000, "channels": 1, "frame_ms": 20},
