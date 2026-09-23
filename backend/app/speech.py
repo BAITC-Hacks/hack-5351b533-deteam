@@ -24,21 +24,25 @@ STT = client.with_options(timeout=float(os.getenv("STT_TIMEOUT", "8")), max_retr
 
 STT_HEDGE = int(os.getenv("STT_HEDGE", "2"))   # параллельных одинаковых запросов, берём первый ответ (режет хвост задержки API)
 
-async def _transcribe_once(wav):
-    kw = {"language": STT_LANGUAGE} if STT_LANGUAGE else {}
+async def _transcribe_once(wav, language=STT_LANGUAGE):
+    kw = {"language": language} if language else {}
     r = await STT.audio.transcriptions.create(model=config.STT_MODEL, file=("turn.wav", wav, "audio/wav"), prompt=STT_PROMPT, **kw)
     return r.text.strip()
 
 async def transcribe(pcm16k: bytes) -> tuple[str, int]:
     t = time.perf_counter(); wav = wav_bytes(pcm16k)
-    tasks = [asyncio.create_task(_transcribe_once(wav)) for _ in range(max(1, STT_HEDGE))]
-    err = None
+    # хедж с разными языками: kk (лучше для казахского) и авто (короткие русские «алло», «да» с kk иногда дают пустоту)
+    langs = [STT_LANGUAGE] + [None] * (max(1, STT_HEDGE) - 1) if STT_LANGUAGE else [None] * max(1, STT_HEDGE)
+    tasks = [asyncio.create_task(_transcribe_once(wav, lang)) for lang in langs]
+    err = None; empty = False
     try:
         for fut in asyncio.as_completed(tasks):
             try: text = await fut
             except asyncio.CancelledError: raise
             except Exception as e: err = e; continue
+            if not text: empty = True; continue          # пустой ответ одного варианта: ждём второй
             return text, int((time.perf_counter() - t) * 1000)
+        if empty: return "", int((time.perf_counter() - t) * 1000)
         raise err
     finally:
         for x in tasks: x.cancel()
@@ -124,8 +128,9 @@ def template_phrases():
         for v in ALT_PROMPTS.values(): out.append((v[lang], lang))
         out += [({"ru": "Хорошо. Чем ещё могу помочь?", "kk": "Жақсы. Тағы немен көмектесе аламын?"}[lang], lang),
                 ({"ru": "Хорошо, отложим. Чем ещё могу помочь?", "kk": "Жақсы, кейінге қалдырайық. Тағы немен көмектесе аламын?"}[lang], lang)]
-    from .responder import GREET_REPLY
-    out += [(GREET_REPLY["ru"], "ru"), (GREET_REPLY["kk"], "kk")]
+    from .responder import GREET_REPLY, HEARD_REPLY, CLARIFY_OPEN, FILLER as R_FILLER
+    out += [(d[l], l) for d in (GREET_REPLY, HEARD_REPLY, CLARIFY_OPEN) for l in ("ru", "kk")]
+    out += [(v[l], l) for v in R_FILLER.values() for l in ("ru", "kk")]
     out += [(GREETING["unknown"], "ru"), (FILLER["ru"], "ru"), (FILLER["kk"], "kk")]
     for c in kit.mock_backend()["clients"]:   # персональные приветствия для caller ID: первый звук звонка из кэша
         lang = c.get("preferred_language", "ru"); out.append((greeting(c, lang), lang))

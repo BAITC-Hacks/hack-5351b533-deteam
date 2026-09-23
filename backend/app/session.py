@@ -189,6 +189,7 @@ class Session:
         self.client = None
         self.gslots: dict = {}
         self.known: dict = {}
+        self.done_frames: dict = {}
         self.lang_lock = None
         self.active: Frame | None = None
         self.stack: list[Frame] = []
@@ -267,6 +268,9 @@ class Session:
                 return {"decision": "continue", "fast_path": "slot_pattern", "scenarios": [a.sid], "slots": {a.expected_slot: v}}
         if normalize.is_operator(text):
             return {"decision": "handoff", "fast_path": "operator_request", "scenarios": ["SC37"], "slots": {}}
+        if normalize.is_hearing_check(text):
+            if not self.lang_lock: self.language = "kk" if normalize.KK_LETTERS.search(text) else "ru"
+            return {"decision": "greet", "fast_path": "greeting", "hearing": True, "scenarios": ["SYS_UNCLEAR"], "slots": {}}
         if normalize.is_greeting(text):
             if not self.lang_lock: self.language = "kk" if normalize.KK_LETTERS.search(text) else "ru"
             return {"decision": "greet", "fast_path": "greeting", "scenarios": ["SYS_UNCLEAR"], "slots": {}}
@@ -336,6 +340,7 @@ class Session:
             self.handoff = {"queue": st.queue, "scenario": f.sid, "facts": st.facts}
         else:
             f.status = "done"
+            self.done_frames[f.sid] = f
             if f.sid not in self.completed: self.completed.append(f.sid)
         for k in CARRY_SLOTS:
             if f.slots.get(k): self.known[k] = f.slots[k]
@@ -353,7 +358,10 @@ class Session:
         for sid in dict.fromkeys(ids):
             if self.active and self.active.sid == sid and self.active.status == "active": f = self.active
             elif (f := self._pop_stack(sid)): f.status = "active"; f.new = False
-            else: f = Frame(sid)
+            else:
+                f = Frame(sid)
+                prev = self.done_frames.get(sid)
+                if prev: f.slots = {k: v for k, v in prev.slots.items() if v not in (None, "", [])}
             frames.append(f)
         if self.active and self.active.status == "active" and self.active not in frames:
             self._defer(self.active, "topic_switch")
@@ -381,6 +389,7 @@ class Session:
                 self._apply(f, st); items.append(self._item(f, st))
             f.new = False if f is not interactive else f.new
         self.active = interactive
+        if self.active or any(i["kind"] == "deferred" for i in items): self.offer_next = None   # предложение не прозвучит — не ждём на него «да»
         if not self.active and self.stack and not self.handoff and not self.offer_next:
             self.offer_return = self.stack[-1]
             items.append({"kind": "offer_return", "scenario": self.stack[-1].sid})
@@ -391,7 +400,9 @@ class Session:
         dec = u["decision"]
         a = self.active if self.active and self.active.status == "active" else None
         if dec == "greet":
-            return [{"kind": "greet", "resume": self.active.sid if self.active and self.active.status == "active" else None}]
+            a = self.active if self.active and self.active.status == "active" else None
+            return [{"kind": "greet", "hearing": bool(u.get("hearing")), "resume": a.sid if a else None,
+                     "resume_slot": a.expected_slot if a and a.awaiting == "slot" else None}]
         if dec == "goodbye" and not u.get("fast_path") and not self.completed and not self.stack and self.turn_no <= 1 and not normalize.is_bye(u.get("text", "")):
             return [{"kind": "greet", "resume": None}]   # роутер принял приветствие/обрывок первой реплики за прощание
         if dec == "goodbye":

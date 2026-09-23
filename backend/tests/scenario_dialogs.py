@@ -274,10 +274,17 @@ def _facts_iter(o):
         for x in o: yield from _facts_iter(x)
 
 
+def _leadins():
+    from app.responder import FILLER, ack_for
+    from app.catalog import CATALOG
+    return {v[l] for v in FILLER.values() for l in ("ru", "kk")} | {a for sid in CATALOG.scenarios() for l in ("ru", "kk") if (a := ack_for(sid, l))}
+_LEADINS = _leadins()
+
 def text_issues(r: str, lang: str, multi: bool = False) -> list:
     out = []
     if not r.strip(): return ["empty response"]
     sents = [x for x in re.split(r"(?<=[.!?…])\s+", r.strip()) if x.strip()]
+    if sents and sents[0].strip() in _LEADINS: sents = sents[1:]          # шаблонная вводная («Сейчас посчитаю.») не часть ответа
     if len(sents) > 3: out.append(f"long: {len(sents)} sentences")
     if len(r.split()) > (60 if multi else 45): out.append(f"long: {len(r.split())} words")
     nq = sum(x.rstrip().endswith("?") for x in sents)

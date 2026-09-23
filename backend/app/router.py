@@ -21,6 +21,7 @@ log = logging.getLogger("router")
 HEDGE = max(1, int(os.getenv("ROUTER_HEDGE", "2")))
 REFILL = os.getenv("ROUTER_REFILL", "1") == "1"
 HEDGE_KEYS = os.getenv("ROUTER_HEDGE_KEYS", "0") == "1"
+LATE_MS = int(os.getenv("ROUTER_LATE_HEDGE_MS", "1800"))   # нет первого токена за это время -> ещё один запрос на запасную модель
 
 def schema(ids: tuple, slot_names: tuple) -> dict:
     sref = {"type": "string", "enum": list(ids)}
@@ -141,7 +142,7 @@ async def _first_token(kw):
     """Открыть стрим и дочитать до первого текстового токена -> (stream, delta, t_first). При ошибке/отмене стрим закрывается."""
     stream = None
     try:
-        stream = await client.responses.create(**kw, stream=True)
+        stream = await client.responses.create(**{k: v for k, v in kw.items() if not k.startswith("_")}, stream=True)
         while True:
             try: ev = await stream.__anext__()
             except StopAsyncIteration: raise RuntimeError("router stream ended before output")
@@ -165,13 +166,23 @@ def _kw_i(kw, i):
     return kw if i == 0 or not HEDGE_KEYS else {**kw, "prompt_cache_key": f"{kw['prompt_cache_key']}-h{i}"}
 
 async def _hedged(kw, n):
-    """N одинаковых стримов; победитель = первый выдавший текстовый токен. -> (index, stream, first_delta, t_first)."""
+    """N одинаковых стримов; победитель = первый выдавший текстовый токен. -> (index, stream, first_delta, t_first).
+    Поздний хедж (живой диалог, n > 1): если за LATE_MS нет первого токена — ещё один стрим на ROUTER_FALLBACK_MODEL
+    (режет хвосты API в 5–8 с). Его индекс = n; модель победителя кладём в kw["_winner_model"]."""
     tasks = [asyncio.create_task(_first_token(_kw_i(kw, i))) for i in range(n)]
-    win = None; err = None
+    win = None; err = None; t_start = time.perf_counter()
+    late_ok = n > 1 and LATE_MS > 0 and kw["model"] != config.ROUTER_FALLBACK_MODEL
     try:
         pending = set(tasks)
         while pending and win is None:
-            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            timeout = max(0.0, LATE_MS / 1000 - (time.perf_counter() - t_start)) if late_ok else None
+            done, pending = await asyncio.wait(pending, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+            if not done and late_ok:
+                late_ok = False
+                lt = asyncio.create_task(_first_token({**kw, "model": config.ROUTER_FALLBACK_MODEL}))
+                tasks.append(lt); pending.add(lt)
+                log.warning("router: no first token in %d ms, late hedge -> %s", LATE_MS, config.ROUTER_FALLBACK_MODEL)
+                continue
             for i, t in enumerate(tasks):
                 if t not in done or t.cancelled(): continue
                 if t.exception() is not None: err = t.exception()
@@ -182,6 +193,7 @@ async def _hedged(kw, n):
             if not t.done(): t.cancel()
         if losers: _bg(_reap(losers))
     if win is None: raise err or RuntimeError("router: no stream")
+    kw["_winner_model"] = config.ROUTER_FALLBACK_MODEL if win[0] >= n else kw["model"]
     return win
 
 async def _stream_once(kw, n, t0, check):
@@ -257,7 +269,7 @@ async def route(utterance: str, state: dict | None = None, history: list | None 
     if early["task"] is not None:
         try: await early["task"]
         except Exception as ex: log.warning("on_early task failed: %r", ex)
-    out["_meta"] = {"model": kw["model"], "latency_ms": int((time.perf_counter() - t) * 1000), "ttft_ms": m.pop("ttft_ms"),
+    out["_meta"] = {"model": kw.pop("_winner_model", None) or kw["model"], "latency_ms": int((time.perf_counter() - t) * 1000), "ttft_ms": m.pop("ttft_ms"),
                     "early_ms": early["ms"], "hedge_winner": m.pop("hedge_winner"), "n_hedge": n, "catalog_version": version, **m}
     return out
 

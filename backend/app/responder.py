@@ -59,13 +59,30 @@ REASK = {"again_phone": {"ru": "Не нашла вас по этому номе�
                          "kk": "ЖСН бойынша табылмады. Телефон нөміріңізді айтыңызшы, немесе операторға қосамын."}}
 
 GREET_REPLY = {"ru": "Здравствуйте! Слушаю вас.", "kk": "Сәлеметсіз бе! Тыңдап тұрмын."}
+HEARD_REPLY = {"ru": "Да, слышу вас хорошо. Чем могу помочь?", "kk": "Иә, жақсы естіп тұрмын. Қалай көмектесе аламын?"}
+CLARIFY_OPEN = {"ru": "Подскажите, по какому вопросу вы звоните: страховка авто, здоровья, жилья или путешествий?",
+                "kk": "Қай мәселе бойынша хабарласып тұрсыз: көлік, денсаулық, тұрғын үй немесе сапар сақтандыруы?"}
+FILLER = {"calc": {"ru": "Сейчас посчитаю.", "kk": "Қазір есептеймін."}, "check": {"ru": "Секунду, проверяю.", "kk": "Бір сәт, тексеремін."},
+          "preview": {"ru": "Так, проверю данные.", "kk": "Деректерді тексерейін."}, "any": {"ru": "Секунду.", "kk": "Бір сәт."}}
+
+def filler_for(items, actions, lang):
+    """Короткая естественная фраза, пока LLM формулирует ответ (не пустая пауза на ходах с расчётом/проверкой)."""
+    kinds = {i.get("kind") for i in items}
+    if "preview" in kinds: key = "preview"
+    elif any(a.startswith("calc_") for a in actions): key = "calc"
+    elif any(a.split(":")[0].startswith(("get_", "check_", "list_", "find_", "kb_", "resend_", "request_")) for a in actions): key = "check"
+    else: key = "any"
+    return FILLER[key][lang]
 
 def template_for(items, lang):
     """Ответ без LLM, если он детерминирован. Иначе None."""
     if len(items) != 1: return None
     it = items[0]; k = it["kind"]
     if k == "goodbye": return sys_resp("SYS_GOODBYE", lang)
-    if k == "greet": return GREET_REPLY[lang]
+    if k == "greet":
+        base = HEARD_REPLY[lang] if it.get("hearing") else GREET_REPLY[lang]
+        if it.get("resume_slot"): return base.split("!")[0].split(".")[0] + ". " + slot_prompt(it["resume_slot"], lang)
+        return base
     if k == "out_of_scope":
         rp = it.get("reprompt")
         if it.get("robot"): return ROBOT[lang][1].format(rp) if rp else ROBOT[lang][0]
@@ -74,7 +91,7 @@ def template_for(items, lang):
     if k == "clarify":
         o = [PHRASES[x][lang] for x in it.get("options", []) if x in PHRASES]
         if len(o) >= 2: return sys_resp("SYS_UNCLEAR", lang).replace("{option_a}", o[0]).replace("{option_b}", o[1])
-        return {"ru": "Уточните, пожалуйста, что именно вас интересует?", "kk": "Нақты не қызықтыратынын айтып жіберіңізші."}[lang]
+        return CLARIFY_OPEN[lang]
     if k == "declined": return {"ru": "Хорошо. Чем ещё могу помочь?", "kk": "Жақсы. Тағы немен көмектесе аламын?"}[lang]
     if k == "cancelled": return {"ru": "Хорошо, отложим. Чем ещё могу помочь?", "kk": "Жақсы, кейінге қалдырайық. Тағы немен көмектесе аламын?"}[lang]
     f = it.get("facts") or {}
@@ -126,6 +143,7 @@ ACTION_NAMES = {"create_policy": {"ru": "оформление полиса", "kk
 def llm_payload(sess, text, items, ack):
     lang = sess.language
     out = []
+    other_q = any(i["kind"] in ("ask", "offer", "preview", "offer_return", "deferred", "clarify") for i in items)   # один вопрос за ход
     for it in items:
         k = it["kind"]; sid = it.get("scenario")
         d = {"kind": k}
@@ -139,7 +157,7 @@ def llm_payload(sess, text, items, ack):
             if (it.get("facts") or {}).get("client_policies"): d["ask_for"] = "which of client_policies (name the products, e.g. ОГПО or КАСКО; one short question)"
         if k in ("done", "handoff") and sid in CATALOG.scenarios():
             d["style_example"] = CATALOG.scenarios()[sid]["responses"][lang]["closing"]
-            if it.get("question"): d["then_ask"] = it["question"]
+            if it.get("question") and not other_q: d["then_ask"] = it["question"]
         if k == "offer": d["ask"] = it.get("question")
         if k == "preview": d["irreversible_action"] = ACTION_NAMES.get(it.get("action"), {}).get(lang, it.get("action"))
         if k == "clarify": d["options"] = [PHRASES[x][lang] for x in it.get("options", []) if x in PHRASES]

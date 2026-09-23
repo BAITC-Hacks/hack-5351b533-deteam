@@ -4,7 +4,7 @@
 import asyncio, re, time
 from . import config
 from .catalog import CATALOG
-from .responder import template_for, ack_for, llm_payload, stream_llm, handoff_summary
+from .responder import filler_for, template_for, ack_for, llm_payload, stream_llm, handoff_summary
 from .session import RU_SWITCH, KK_SWITCH
 
 SENT_END = re.compile(r"([.!?…])(\s|$)")
@@ -85,6 +85,9 @@ async def process_turn(sess, text, *, t0=None, stt_ms=0, emit=None, speak=None, 
         if ack: await say(ack, True)
     tpl = template_for(items, lang)
     source = "template"
+    if not tpl and not ack and parts == []:
+        ack = filler_for(items, sess._turn_actions, lang)
+        await say(ack, True)
     if tpl:
         await say(tpl, True)
     else:

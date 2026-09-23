@@ -75,8 +75,8 @@ def SC03(ctx):
             lite = ctx.call("calc_casco_price", car_value=ctx.s("car_value"), car_year=ctx.s("car_year"), franchise=ctx.s("franchise") or 0, package="Lite")
             return fail(q, lite_price_kzt=lite.get("price"), lite_covers=ctx.kb("products.casco.packages.Lite"))
         return ctx.on_error(q)
-    return done(package="Standard", price_kzt=q["price"], franchise_kzt=q["franchise"], covers=ctx.kb("products.casco.packages.Standard"),
-                other_franchise_options="0, 50000, 100000 KZT")
+    return Step("done", facts={"package": "Standard", "price_kzt": q["price"], "franchise_kzt": q["franchise"], "covers": ctx.kb("products.casco.packages.Standard"),
+                "other_franchise_options": "0, 50000, 100000 KZT"}, offer_next=("SC37", {}), question="Соединить со специалистом, чтобы оформить полис?")
 
 def SC04(ctx):
     if (st := ctx.identify()): return st
@@ -126,13 +126,13 @@ def SC07(ctx):
     if (st := ctx.need("property_type", "sum_insured")): return st
     q = ctx.call("calc_property_price", property_type=ctx.s("property_type"), sum_insured=ctx.s("sum_insured"))
     if "error" in q: return fail(q, allowed_sums_kzt=[5000000, 10000000, 20000000])
-    return done(price_kzt=q["price"], covers=ctx.kb("products.property.covers"))
+    return Step("done", facts={"price_kzt": q["price"], "covers": ctx.kb("products.property.covers")}, offer_next=("SC37", {}), question="Соединить со специалистом, чтобы оформить полис?")
 
 def SC08(ctx):
     if (st := ctx.need("sum_insured")): return st
     q = ctx.call("calc_accident_price", sum_insured=ctx.s("sum_insured"))
     if "error" in q: return fail(q, allowed_sums_kzt=[1000000, 3000000, 5000000])
-    return done(price_kzt=q["price"], covers=ctx.kb("products.accident.covers"))
+    return Step("done", facts={"price_kzt": q["price"], "covers": ctx.kb("products.accident.covers")}, offer_next=("SC37", {}), question="Соединить со специалистом, чтобы оформить полис?")
 
 def SC09(ctx):
     return done(dms=ctx.call("kb_lookup", topic="products.dms").get("answer"), installments=ctx.kb("payments.installments.dms_individual"))

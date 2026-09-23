@@ -108,6 +108,15 @@ def is_greeting(text: str) -> bool:
     t = re.sub(r"^(алло|ало)\s+", "", t) if t not in ("алло", "ало") else t
     return bool(GREET.match(t))
 
+HEARING = re.compile(r"слыш|слыхать|есті(п|ле|лі|сің|сіз)|естіліп", re.I)
+
+def is_hearing_check(text: str) -> bool:
+    """«Алло, алло, вы меня слышите?», «Мені естіп тұрсыз ба?» — проверка связи без просьбы."""
+    t = (text or "").lower(); words = re.findall(r"\w+", t)
+    if not HEARING.search(t) or len(words) > 9: return False
+    rest = [w for w in words if not re.match(r"(алло|ало|вы|ты|меня|мене|мені|слыш|слыхать|есті|алё|але|да|нет|хорошо|плохо|там|сіз|сен|ба|бе|ма|ме|тұрсыз|тұрсың|нормально|кто|это|питер|привет|здравствуйте|сәлеметсіз)", w)]
+    return len(rest) <= 1
+
 def is_bye(text: str) -> bool:
     return _clean(text) in BYE
 

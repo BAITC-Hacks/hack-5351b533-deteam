@@ -21,7 +21,7 @@ def decide(r: dict, unclear_streak: int = 0, version=None) -> dict:
     alts = [a["scenario_id"] for a in r.get("alternatives", []) if not a["scenario_id"].startswith("SYS_")]
     if sid == "SYS_UNCLEAR" or not real or real[0]["confidence"] < config.CONF_RUN:
         opts = ([s["scenario_id"] for s in real] + alts)[:2]
-        if (real and real[0]["confidence"] < config.CONF_CLARIFY or not real) and unclear_streak >= 1:
+        if (real and real[0]["confidence"] < config.CONF_CLARIFY and unclear_streak >= 1) or (not real and unclear_streak >= 2):
             return {"decision": "handoff", "scenarios": ["SC37"], "clarify": opts}
         return {"decision": "clarify", "scenarios": ["SYS_UNCLEAR"], "clarify": opts}
     keep = [s for s in real if s["confidence"] >= config.CONF_CLARIFY]
