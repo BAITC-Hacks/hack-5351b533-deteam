@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONUTF8=1
+
+WORKDIR /app
+
+COPY tools/mock-server/requirements.txt infra/asterisk/scripts/requirements-smoke.txt /tmp/requirements/
+RUN pip install --no-cache-dir \
+    -r /tmp/requirements/requirements.txt \
+    -r /tmp/requirements/requirements-smoke.txt
+
+# Preserve the repository layout: the mock resolves fixtures relative to server.py.
+COPY tools/mock-server/server.py /app/tools/mock-server/server.py
+COPY infra/asterisk/scripts/ari_smoke.py /app/infra/asterisk/scripts/ari_smoke.py
+COPY fixtures /app/fixtures

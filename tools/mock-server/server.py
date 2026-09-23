@@ -7,10 +7,10 @@ WS /ws/voice?fixture=web-d03 : на каждую реплику клиента (
 голос: 0.6 с речи и затем 0.5 с тишины) отдаёт следующий ход из fixture с исходными таймингами.
 Аудио бота заменено тоном 440 Гц нужной длительности.
 """
-import asyncio, json, math, struct, uuid, time
+import asyncio, json, math, os, struct, uuid, time
 from urllib.parse import parse_qsl
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 import uvicorn
 
@@ -19,6 +19,7 @@ J = lambda p: json.loads((FX / p).read_text())
 app = FastAPI(title="Voice Router mock")
 supervisors: set[WebSocket] = set()
 calls: dict[str, dict] = {}
+recordings: dict[str, dict] = {}
 
 def load(sid):
     return [json.loads(l) for l in (FX / "sessions" / f"{sid}.jsonl").read_text().splitlines() if l]
@@ -96,6 +97,18 @@ def outcome(u: str): return PlainTextResponse(calls.get(u, {}).get("outcome", "h
 @app.post("/api/telephony/calls/{u}/hangup")
 async def hangup(u: str, r: Request): print("HANGUP", u, dict(parse_qsl((await r.body()).decode()))); return PlainTextResponse("ok")
 
+@app.post("/api/telephony/calls/{call_id}/recording")
+async def recording_complete(call_id: str, r: Request):
+    payload = await r.json()
+    if payload.get("call_id") != call_id:
+        raise HTTPException(status_code=400, detail="call_id mismatch")
+    previous = recordings.get(call_id)
+    if previous and (previous.get("recording_uri"), previous.get("sha256")) != (payload.get("recording_uri"), payload.get("sha256")):
+        raise HTTPException(status_code=409, detail="recording already saved with different content")
+    recordings[call_id] = payload
+    print("RECORDING", call_id, payload.get("recording_uri"), payload.get("sha256"), flush=True)
+    return {"status": "ok"}
+
 @app.websocket("/ws/supervisor")
 async def ws_sup(ws: WebSocket):
     await ws.accept(); supervisors.add(ws)
@@ -158,7 +171,7 @@ async def ws_voice(ws: WebSocket, fixture: str = "web-d03"):
 
 # --- AudioSocket echo: проверка телефонии без бэкенда ---
 async def audiosocket(reader, writer):
-    """Эхо с задержкой 1 с. DTMF 0 → перевод (outcome transfer:operator_general), # → hangup."""
+    """Эхо с задержкой 1 с. В ARI-режиме DTMF обрабатывает ARI-контроллер."""
     uid = None; buf = []
     try:
         while True:
@@ -170,6 +183,8 @@ async def audiosocket(reader, writer):
                 if len(buf) > 50: writer.write(b"\x10" + struct.pack(">H", len(buf[0])) + buf.pop(0)); await writer.drain()
             elif kind == 0x03:
                 d = p.decode(); print("DTMF", d)
+                if os.environ.get("MOCK_TELEPHONY_MODE") == "ari":
+                    continue
                 if d in "0#":
                     if uid in calls and d == "0": calls[uid]["outcome"] = "transfer:operator_general"
                     writer.write(b"\x00\x00\x00"); await writer.drain(); break

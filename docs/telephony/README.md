@@ -114,6 +114,12 @@ AudioSocket: сообщение = 1 байт тип, 2 байта длина big
 * Если Asterisk не шлёт кадры (софтфон с DTX/подавлением тишины, Local‑канал), сервер сам досыпает тишину во VAD, чтобы конец фразы определился.
 * Внутри: 8 → 16 kHz для VAD/STT, TTS 24 → 8 kHz.
 
+## Полная запись звонка
+
+Asterisk запускает `MixMonitor` на входном канале после `Answer()` и до `Stasis(voice-ai)`. Запись прикреплена к каналу звонящего, поэтому охватывает разговор с агентом и продолжение после ARI-перевода в `saqta-transfer` до окончательного отбоя. Привязанный к каналу hangup handler вызывает `StopMixMonitor`; после закрытия WAV появляется маркер `.ready` в общем Docker-томе. Отдельный `recording-uploader` загружает файл в приватный bucket `call-recordings` локального MinIO и отправляет `POST /api/telephony/calls/{call_id}/recording` бэкенду. `call_id` равен Asterisk `UNIQUEID`/ARI `channel.id`, что позволяет связать запись с телефонной сессией.
+
+В callback есть постоянный `recording_uri` вида `s3://...`, bucket/key и подписанный `recording_url`, действительный 24 часа. Backend должен хранить bucket/key и при необходимости выпускать новую ссылку; повторный callback для одного call_id идемпотентен. Если MinIO или backend недоступен, uploader сохраняет локальный WAV и повторяет отправку. Полный формат см. в [OpenAPI](../../contracts/openapi.yaml). Для разработки на одном ПК MinIO доступен на `127.0.0.1:9000`, консоль — на `127.0.0.1:9001`.
+
 ## Если External Media не принимает audiosocket
 
 Поддержку проверяют первым звонком. Asterisk без поддержки отвечает на `externalMedia` `HTTP 501 The encapsulation and/or transport is not supported`, бэкенд пишет в лог:

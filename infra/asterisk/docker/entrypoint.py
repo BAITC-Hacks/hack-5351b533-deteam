@@ -3,7 +3,9 @@
 
 import os
 import re
+import socket
 import sys
+from ipaddress import IPv4Address
 from pathlib import Path
 
 
@@ -29,12 +31,21 @@ try:
     ami = setting("AMI_SECRET", required=True)
     ari = setting("ARI_SECRET", required=True)
     sip = setting("SIP_TEST_SECRET", required=True)
+    operator = setting("SIP_OPERATOR_SECRET", required=True)
     public_ip = setting("ASTERISK_PUBLIC_IP", pattern=r"[A-Za-z0-9.:-]+")
-    local_net = setting("ASTERISK_LOCAL_NET", pattern=r"[0-9./:a-fA-F]+")
+    local_net = setting("ASTERISK_LOCAL_NET", pattern=r"(?:auto|[0-9./:a-fA-F]+)") or "auto"
     local_peer = setting("LOCAL_SIP_PEER_IP", pattern=r"[0-9.]+")
 except ValueError as exc:
     print(exc, file=sys.stderr)
     sys.exit(1)
+
+if local_net == "auto":
+    addresses = socket.getaddrinfo(socket.gethostname(), None, family=socket.AF_INET)
+    container_ip = next((item[4][0] for item in addresses if not IPv4Address(item[4][0]).is_loopback), None)
+    if not container_ip:
+        print("Could not detect container IPv4 address for ASTERISK_LOCAL_NET=auto", file=sys.stderr)
+        sys.exit(1)
+    local_net = f"{container_ip}/32"
 
 nat = ""
 if public_ip:
@@ -142,6 +153,55 @@ type=aor
 max_contacts=1
 remove_existing=yes
 
+[1001]
+type=endpoint
+transport=transport-udp
+context=from-inbound
+disallow=all
+allow=ulaw,alaw
+auth=1001-auth
+aors=1001
+callerid="Demo client" <+77010000007>
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+
+[1001-auth]
+type=auth
+auth_type=userpass
+username=1001
+password={sip}
+
+[1001]
+type=aor
+max_contacts=1
+remove_existing=yes
+
+[operator]
+type=endpoint
+transport=transport-udp
+context=from-inbound
+disallow=all
+allow=ulaw,alaw
+auth=operator-auth
+aors=operator
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+
+[operator-auth]
+type=auth
+auth_type=userpass
+username=operator
+password={operator}
+
+[operator]
+type=aor
+max_contacts=1
+remove_existing=yes
+
 {local_peer_config}
 #include pjsip_trunk.conf
 """)
@@ -154,11 +214,45 @@ writeprotect=yes
 [from-inbound]
 exten => s,1,NoOp(Incoming voice AI call)
  same => n,Answer()
+ same => n,Gosub(record-call,s,1)
  same => n,Stasis(voice-ai)
  same => n,Hangup()
-exten => _X.,1,Goto(s,1)
+
+; 7575NN represents demo client CNN (+770100000NN).
+exten => _7575XX,1,Set(CALLERID(num)=+770100000${EXTEN:4:2})
+ same => n,Answer()
+ same => n,Gosub(record-call,s,1)
+ same => n,Stasis(voice-ai)
+ same => n,Hangup()
+
+; Direct SIP/RTP diagnostic: call 9999 and listen for your own voice.
+exten => 9999,1,Answer()
+ same => n,Gosub(record-call,s,1)
+ same => n,Echo()
+ same => n,Hangup()
+
+exten => _X.,1,Answer()
+ same => n,Gosub(record-call,s,1)
+ same => n,Stasis(voice-ai)
+ same => n,Hangup()
 exten => _X,1,Goto(s,1)
 exten => voice-ai,1,Goto(s,1)
+
+[record-call]
+exten => s,1,Set(RECORDING_ID=${UNIQUEID})
+ same => n,MixMonitor(/var/spool/asterisk/monitor/${RECORDING_ID}.wav,i(RECORDING_MIX_ID),/usr/bin/python3 /usr/local/bin/recording-finished ${RECORDING_ID})
+ same => n,Set(CHANNEL(hangup_handler_push)=recording-finish,s,1)
+ same => n,Return()
+
+[recording-finish]
+exten => s,1,StopMixMonitor(${RECORDING_MIX_ID})
+ same => n,Return()
+
+[saqta-transfer]
+exten => _[a-z].,1,NoOp(Transfer to ${EXTEN}: ${SAQTA_SUMMARY})
+ same => n,Set(CALLERID(name)=Saqta ${EXTEN})
+ same => n,Dial(PJSIP/operator,30)
+ same => n,Hangup()
 """)
 
 write("modules.conf", """
@@ -205,5 +299,8 @@ gid = grp.getgrnam("asterisk").gr_gid
 for path in [CONFIG / name for name in ("manager.conf", "http.conf", "ari.conf", "rtp.conf", "pjsip.conf", "extensions.conf", "modules.conf")]:
     os.chown(path, uid, gid)
 os.chown("/run/asterisk", uid, gid)
+monitor_dir = Path("/var/spool/asterisk/monitor")
+monitor_dir.mkdir(parents=True, exist_ok=True)
+os.chown(monitor_dir, uid, gid)
 
 os.execvp("asterisk", ["asterisk", "-f", "-U", "asterisk", "-G", "asterisk", "-vvv"])

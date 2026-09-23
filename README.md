@@ -131,7 +131,7 @@ make probe-phone   # звонок «как Asterisk» по AudioSocket
 |---|---|
 | [backend/](backend/README.md) | голосовой агент: VAD, STT, роутер, исполнитель, TTS, bench, эволюция, телефония |
 | [frontend/](frontend/README.md) | веб: звонок, трассировка, супервизор, каталог и эволюция |
-| [infra/asterisk/](infra/asterisk/README.md) | Asterisk в Docker: PJSIP, AMI, ARI |
+| [infra/asterisk/](infra/asterisk/README.md) | Asterisk в Docker (PJSIP, ARI), MinIO и загрузчик полных записей звонков |
 | [contracts/](contracts) | JSON‑схемы событий WS, выхода роутера, REST (OpenAPI), конфиги Asterisk |
 | [fixtures/](fixtures) | шаблонные сессии и данные супервизора для фронта |
 | [tools/](tools) | мок‑сервер, проверка фикстур против схем |
@@ -157,3 +157,4 @@ make probe-phone   # звонок «как Asterisk» по AudioSocket
 | Телефония | [docs/telephony/README.md](docs/telephony/README.md), [infra/asterisk/README.md](infra/asterisk/README.md) |
 | Контракты | [contracts/](contracts) |
 | Условия кейса | [docs/case/README.ru.md](docs/case/README.ru.md), [ТЗ](docs/case/TZ_Voice_Router.pdf) |
+Для сквозной проверки телефонии на одном компьютере есть `infra/asterisk/compose.smoke.yaml`: он добавляет к Asterisk мок AudioSocket и временный ARI-контроллер. Основной Compose сохраняет полные записи звонков в MinIO и уведомляет backend (`POST /api/telephony/calls/{call_id}/recording`). Настройка `.env`, SIP-аккаунтов и порядок проверки описаны в [infra/asterisk/README.md](infra/asterisk/README.md).

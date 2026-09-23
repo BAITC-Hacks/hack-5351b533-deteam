@@ -1,0 +1,7 @@
+.git
+**/.env
+**/.env.*
+**/pjsip_trunk.conf
+**/__pycache__
+**/.venv
+frontend/node_modules

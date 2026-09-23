@@ -7,8 +7,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/entrypoint.py /usr/local/bin/asterisk-entrypoint
+COPY docker/recording_finished.py /usr/local/bin/recording-finished
 RUN chmod +x /usr/local/bin/asterisk-entrypoint
 
 EXPOSE 5060/udp 5038/tcp 8088/tcp 10000-10100/udp
 
-ENTRYPOINT ["/usr/local/bin/asterisk-entrypoint"]
+ENTRYPOINT ["python3", "/usr/local/bin/asterisk-entrypoint"]
