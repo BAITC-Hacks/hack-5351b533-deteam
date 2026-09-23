@@ -10,7 +10,7 @@ from .catalog import CATALOG
 
 client = AsyncOpenAI(http_client=DefaultAsyncHttpxClient(limits=httpx2.Limits(max_connections=200, max_keepalive_connections=50,
                                                                                keepalive_expiry=float(os.getenv("OPENAI_KEEPALIVE_S", "120")))))
-PHRASES = json.loads((Path(__file__).parent / "assets" / "scenario_phrases.json").read_text())
+PHRASES = json.loads((Path(__file__).parent / "assets" / "scenario_phrases.json").read_text(encoding="utf-8"))
 
 def sys_resp(sid, lang):
     return next(x for x in CATALOG.get()["system_intents"] if x["id"] == sid)["response"][lang]

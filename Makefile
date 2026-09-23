@@ -27,7 +27,7 @@ logs: ## логи контейнера
 	docker compose logs -f api
 
 web: ## фронт (Vite dev server на :5173)
-	cd frontend && npm ci && npm run dev
+	cd frontend && ([ -d node_modules ] || npm ci) && npm run dev -- --host 127.0.0.1 --port 5173
 
 bench: ## роутер на dev-наборе + официальный evaluate.py
 	cd $(BACKEND) && $(PY) -m app.bench --out $(CURDIR)/regression/predictions.json

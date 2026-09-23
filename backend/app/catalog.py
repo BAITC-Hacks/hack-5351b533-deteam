@@ -40,15 +40,15 @@ class Catalog:
     def _load_or_init(self):
         idx = CATALOG_DIR / "index.json"
         if idx.exists():
-            meta = json.loads(idx.read_text())
+            meta = json.loads(idx.read_text(encoding="utf-8"))
             self.versions, self.frozen = meta["versions"], meta.get("frozen", False)
             for v in self.versions:
-                self.data[v["version"]] = json.loads((CATALOG_DIR / f"{v['version']}.json").read_text())
+                self.data[v["version"]] = json.loads((CATALOG_DIR / f"{v['version']}.json").read_text(encoding="utf-8"))
         else:
             self._add(kit.base_catalog(), parent=None, patch=None, note="исходный каталог кита")
 
     def _save(self):
-        (CATALOG_DIR / "index.json").write_text(json.dumps({"versions": self.versions, "frozen": self.frozen}, ensure_ascii=False, indent=2))
+        (CATALOG_DIR / "index.json").write_text(json.dumps({"versions": self.versions, "frozen": self.frozen}, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _add(self, cat: dict, parent, patch, note) -> dict:
         h = _hash(cat["scenarios"])
@@ -57,7 +57,7 @@ class Catalog:
         v = {"version": name, "parent": parent, "hash": h[:8], "applied_patch": patch, "note": note,
              "created_at": _now(), "current": True, "primary_acc": None}
         self.versions.append(v); self.data[name] = cat
-        (CATALOG_DIR / f"{name}.json").write_text(json.dumps(cat, ensure_ascii=False, indent=2))
+        (CATALOG_DIR / f"{name}.json").write_text(json.dumps(cat, ensure_ascii=False, indent=2), encoding="utf-8")
         self._save()
         return self.public(v)
 

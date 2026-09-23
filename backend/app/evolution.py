@@ -50,8 +50,8 @@ async def _body(r: Request) -> dict:
 
 # ------------------------------------------------------------------ хранилище
 CASES: list[dict] = bench.read_cases()
-RUNS: dict[str, dict] = {p.stem: json.loads(p.read_text()) for p in sorted(RUNS_DIR.glob("BR-*.json"))}
-PATCHES: dict[str, dict] = {p.stem: json.loads(p.read_text()) for p in sorted(PATCH_DIR.glob("PT-*.json"))}
+RUNS: dict[str, dict] = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(RUNS_DIR.glob("BR-*.json"))}
+PATCHES: dict[str, dict] = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(PATCH_DIR.glob("PT-*.json"))}
 for _p in PATCHES.values():
     if _p["status"] in ("proposing", "validating", "regression"):
         _p.update(status="failed", error="прервано перезапуском сервера")
@@ -61,11 +61,11 @@ def save_cases():
 
 def save_run(run):
     RUNS[run["run_id"]] = run
-    (RUNS_DIR / f"{run['run_id']}.json").write_text(json.dumps(run, ensure_ascii=False, indent=1))
+    (RUNS_DIR / f"{run['run_id']}.json").write_text(json.dumps(run, ensure_ascii=False, indent=1), encoding="utf-8")
 
 def save_patch(p):
     PATCHES[p["patch_id"]] = p
-    (PATCH_DIR / f"{p['patch_id']}.json").write_text(json.dumps(p, ensure_ascii=False, indent=1))
+    (PATCH_DIR / f"{p['patch_id']}.json").write_text(json.dumps(p, ensure_ascii=False, indent=1), encoding="utf-8")
 
 def norm(t: str) -> str:
     t = t.lower().replace("ё", "е")

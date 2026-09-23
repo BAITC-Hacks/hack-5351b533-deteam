@@ -53,7 +53,7 @@ def validator():
         from jsonschema import Draft202012Validator
         from referencing import Registry, Resource
         R = Path(__file__).resolve().parents[2] / "contracts"
-        schemas = {p.name: json.loads(p.read_text()) for p in R.glob("*.schema.json")}
+        schemas = {p.name: json.loads(p.read_text(encoding="utf-8")) for p in R.glob("*.schema.json")}
         reg = Registry().with_resources([(s["$id"], Resource.from_contents(s)) for s in schemas.values()])
         return Draft202012Validator({"$ref": schemas["ws-events.schema.json"]["$id"]}, registry=reg)
     except Exception as e:

@@ -4,6 +4,8 @@
 
 ## Запуск одной командой
 
+Полная установка с телефонией, софтфоном и чек‑листом проверки: **[docs/RUNBOOK.md](docs/RUNBOOK.md)**. Ниже короткий путь только для бэкенда.
+
 Нужны Docker и ключ OpenAI в `backend/.env`:
 
 ```bash
@@ -151,10 +153,12 @@ make probe-phone   # звонок «как Asterisk» по AudioSocket
 
 | Кому | Куда смотреть |
 |---|---|
+| Запуск и проверка | [docs/RUNBOOK.md](docs/RUNBOOK.md) |
 | Жюри и команде | [ARCHITECTURE.md](docs/concept/ARCHITECTURE.md), [ROUTER.md](docs/concept/ROUTER.md), [EVOLUTION.md](docs/concept/EVOLUTION.md) |
 | Бэкенд | [backend/README.md](backend/README.md) |
 | Фронтенд | [docs/frontend/README.md](docs/frontend/README.md), [DIALOG_EXAMPLES.md](docs/frontend/DIALOG_EXAMPLES.md), [frontend/README.md](frontend/README.md) |
 | Телефония | [docs/telephony/README.md](docs/telephony/README.md), [infra/asterisk/README.md](infra/asterisk/README.md) |
 | Контракты | [contracts/](contracts) |
 | Условия кейса | [docs/case/README.ru.md](docs/case/README.ru.md), [ТЗ](docs/case/TZ_Voice_Router.pdf) |
+
 Для сквозной проверки телефонии на одном компьютере есть `infra/asterisk/compose.smoke.yaml`: он добавляет к Asterisk мок AudioSocket и временный ARI-контроллер. Основной Compose сохраняет полные записи звонков в MinIO и уведомляет backend (`POST /api/telephony/calls/{call_id}/recording`). Настройка `.env`, SIP-аккаунтов и порядок проверки описаны в [infra/asterisk/README.md](infra/asterisk/README.md).

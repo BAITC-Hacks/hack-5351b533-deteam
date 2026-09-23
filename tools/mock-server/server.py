@@ -15,14 +15,14 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 import uvicorn
 
 FX = Path(__file__).resolve().parents[2] / "fixtures"
-J = lambda p: json.loads((FX / p).read_text())
+J = lambda p: json.loads((FX / p).read_text(encoding="utf-8"))
 app = FastAPI(title="Voice Router mock")
 supervisors: set[WebSocket] = set()
 calls: dict[str, dict] = {}
 recordings: dict[str, dict] = {}
 
 def load(sid):
-    return [json.loads(l) for l in (FX / "sessions" / f"{sid}.jsonl").read_text().splitlines() if l]
+    return [json.loads(l) for l in (FX / "sessions" / f"{sid}.jsonl").read_text(encoding="utf-8").splitlines() if l]
 
 def tone(ms, sr=24000):
     n = int(sr * ms / 1000)
@@ -57,7 +57,7 @@ def session(sid: str):
     return {**meta, "transcript": tr, "traces": [e["trace"] for e in ev if e["type"] == "turn.trace"],
             "final_state": [e["state"] for e in ev if e["type"] == "dialog.state"][-1]}
 @app.get("/api/sessions/{sid}/events")
-def events(sid: str): return PlainTextResponse((FX / "sessions" / f"{sid}.jsonl").read_text(), media_type="application/x-ndjson")
+def events(sid: str): return PlainTextResponse((FX / "sessions" / f"{sid}.jsonl").read_text(encoding="utf-8"), media_type="application/x-ndjson")
 @app.get("/api/cases")
 def cases(): return J("supervisor/cases.json")
 @app.post("/api/cases", status_code=201)

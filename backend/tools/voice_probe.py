@@ -42,7 +42,7 @@ def mix(pcm, dbfs):
 def validators():
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
-    schemas = {p.name: json.loads(p.read_text()) for p in (ROOT / "contracts").glob("*.schema.json")}
+    schemas = {p.name: json.loads(p.read_text(encoding="utf-8")) for p in (ROOT / "contracts").glob("*.schema.json")}
     reg = Registry().with_resources([(s["$id"], Resource.from_contents(s)) for s in schemas.values()])
     ws = schemas["ws-events.schema.json"]; base = ws["$id"]
     V = lambda ref: Draft202012Validator({"$ref": base + ref}, registry=reg)
@@ -175,7 +175,7 @@ async def run(a):
     if st["interrupted"]: print(f"interrupted turns: {sorted(st['interrupted'])}; audio frames after tts.interrupt: {st['after_int']}")
     print(f"orphan audio frames (outside tts.start..end): {st['orphan']}")
     if a.events:
-        with open(a.events, "w") as f:
+        with open(a.events, "w", encoding="utf-8") as f:
             for d, e in log: f.write(json.dumps({"dir": d, **e} if e["type"] == "audio" else ({"dir": d} | e), ensure_ascii=False) + "\n")
     bad = 0 if a.no_validate else validate([(d, e) for d, e in log if e["type"] != "audio"])
     probs = check_order(log)

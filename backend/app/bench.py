@@ -113,10 +113,10 @@ if __name__ == "__main__":
     a = ap.parse_args()
     rep = asyncio.run(run(dataset(include_cases=a.cases), version=a.version, model=a.model))
     config.REGRESSION_DIR.mkdir(parents=True, exist_ok=True)
-    json.dump({u["id"]: u["got"] for u in rep["items"] if u.get("source", "dev") == "dev"}, open(a.out, "w"), ensure_ascii=False, indent=1)
+    json.dump({u["id"]: u["got"] for u in rep["items"] if u.get("source", "dev") == "dev"}, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     slim = {k: v for k, v in rep.items() if k != "items"}
     json.dump({**slim, "items": [slim_item(u) for u in rep["items"]]},
-              open(config.REGRESSION_DIR / f"bench_{rep['model']}.json", "w"), ensure_ascii=False, indent=1)
+              open(config.REGRESSION_DIR / f"bench_{rep['model']}.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     m = rep["metrics"]["all"]
     print("model", rep["model"], "n", m["n"], "primary", m["primary_acc"], "full", m["full_match"], "latency", rep["latency_ms"], "sec", rep["duration_ms"] / 1000)
     for e in rep["errors"]: print("  ERR", e["id"], e["expected"], "->", e["got"], e["text"])

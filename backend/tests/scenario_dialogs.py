@@ -19,7 +19,7 @@ IRREV = {n for n, a in kit.actions().items() if a["irreversible"]}
 try:   # контракт событий WS (как в tools/validate_contracts.py)
     from jsonschema import Draft202012Validator
     from referencing import Registry, Resource
-    _SCH = {p.name: json.loads(p.read_text()) for p in (Path(__file__).resolve().parents[2] / "contracts").glob("*.schema.json")}
+    _SCH = {p.name: json.loads(p.read_text(encoding="utf-8")) for p in (Path(__file__).resolve().parents[2] / "contracts").glob("*.schema.json")}
     _REG = Registry().with_resources([(x["$id"], Resource.from_contents(x)) for x in _SCH.values()])
     EV_VALIDATOR = Draft202012Validator({"$ref": _SCH["ws-events.schema.json"]["$id"]}, registry=_REG)
 except Exception:
@@ -419,7 +419,7 @@ async def main():
     npass = sum(not r.fails for r in res)
     print(f"\n{npass}/{len(res)} passed in {time.perf_counter() - t0:.0f}s")
     if a.out:
-        Path(a.out).write_text(json.dumps([r.__dict__ for r in res], ensure_ascii=False, indent=1))
+        Path(a.out).write_text(json.dumps([r.__dict__ for r in res], ensure_ascii=False, indent=1), encoding="utf-8")
     return npass == len(res)
 
 
