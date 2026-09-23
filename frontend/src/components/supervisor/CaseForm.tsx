@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type Case, type Trace } from '../../api'
 import { useCatalog } from '../../lib/catalog-context'
+import { Icon } from '../Icon'
 import { ScenarioChip } from '../ui'
 
 /**
@@ -56,7 +57,7 @@ export function CaseForm({ sessionId, trace, existing, onCreated }: { sessionId:
         <div className="row gap">
           <span className="muted small">Робот выбрал неправильно?</span>
           <button className="btn-bad" onClick={() => setOpen(true)}>
-            ✗ Неверно
+            <Icon name="close" />Неверно
           </button>
         </div>
       ) : (
@@ -70,8 +71,8 @@ export function CaseForm({ sessionId, trace, existing, onCreated }: { sessionId:
             {expected.map((id, i) => (
               <span key={id} className="chip chip-picked">
                 {i + 1}. {scenarioName(id)}
-                <button className="chip-x" onClick={() => setExpected(expected.filter((x) => x !== id))} title="Убрать">
-                  ×
+                <button className="chip-x" onClick={() => setExpected(expected.filter((x) => x !== id))} title="Убрать" aria-label={`Убрать ${scenarioName(id)}`}>
+                  <Icon name="close" size={12} spacing="none" />
                 </button>
               </span>
             ))}

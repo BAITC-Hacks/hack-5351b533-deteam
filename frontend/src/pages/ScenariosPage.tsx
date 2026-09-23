@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Badge, Empty, ErrorBox, Panel } from '../components/ui'
+import { Icon } from '../components/Icon'
 import { useCatalog } from '../lib/catalog-context'
-import { dateTime, pct } from '../lib/format'
+import { pct } from '../lib/format'
 
 const PRIORITY_TONE = { normal: 'neutral', high: 'warn', urgent: 'bad' } as const
 
@@ -21,17 +22,18 @@ export function ScenariosPage() {
   return (
     <div className="stack">
       <Panel
-        title={`Каталог ${v.version}`}
-        hint={`хэш ${v.hash} · от ${dateTime(v.created_at)}${v.parent ? ` · родитель ${v.parent}` : ''}${v.applied_patch ? ` · патч ${v.applied_patch}` : ''}`}
+        title="Каталог сценариев"
         actions={
           <span className="row gap">
-            {v.frozen && <Badge tone="info">🔒 заморожен</Badge>}
+            {v.frozen && <Badge tone="info"><Icon name="lock" size={14} />заморожен</Badge>}
             {v.primary_acc != null && <Badge tone="ok">точность {pct(v.primary_acc)}</Badge>}
           </span>
         }
       >
-        {v.note && <p>{v.note}</p>}
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск по названию, id, домену…" />
+        <>
+          {v.note && <p>{v.note}</p>}
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск по названию, id, домену…" />
+        </>
       </Panel>
 
       {domains.map((d) => (

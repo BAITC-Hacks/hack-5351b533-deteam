@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { LiveTurn } from '../../hooks/voiceState'
 import { useCatalog } from '../../lib/catalog-context'
 import { FAST_PATH_LABEL } from '../../lib/format'
+import { Icon } from '../Icon'
 import { Badge, DecisionBadge, LangBadge, ScenarioChip, TotalLatency } from '../ui'
 
 /** Смена лидирующего кандидата посреди фразы — «вау-момент» живой гипотезы */
@@ -83,7 +84,7 @@ export function LiveTranscript(props: { turns: LiveTurn[]; selected: number | nu
               <div className="bubble-meta">
                 Клиент · ход {t.turn} {t.user.lang && <LangBadge lang={t.user.lang} />}
                 {t.user.typed && <Badge>текстом</Badge>}
-                {t.user.speaking && <Badge tone="info">● говорит</Badge>}
+                {t.user.speaking && <Badge tone="info"><Icon name="statusDot" size={12} />говорит</Badge>}
               </div>
               {t.user.text || '…'}
             </div>
@@ -106,7 +107,7 @@ export function LiveTranscript(props: { turns: LiveTurn[]; selected: number | nu
               <div className="bubble-meta">
                 Бот {t.turn === 0 && '· приветствие'} {t.bot.lang && <LangBadge lang={t.bot.lang} />}
                 {t.bot.template && <Badge>шаблон</Badge>}
-                {t.speaking && <Badge tone="info">🔊 говорит</Badge>}
+                {t.speaking && <Badge tone="info"><Icon name="sound" size={14} />говорит</Badge>}
                 {t.interrupted && <Badge tone="warn">перебит</Badge>}
               </div>
               {t.bot.text}

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { DialogStatePanel } from '../components/call/DialogStatePanel'
 import { LiveTranscript } from '../components/call/LiveTranscript'
 import { TracePanel } from '../components/trace/TracePanel'
+import { Icon } from '../components/Icon'
 import { Badge, Empty, Panel, TotalLatency } from '../components/ui'
 import { useVoiceSession } from '../hooks/useVoiceSession'
 import { useCatalog } from '../lib/catalog-context'
@@ -70,10 +71,10 @@ export function CallPage() {
     <div className="stack call-page">
       <Panel
         title="Звонок"
-        hint="Говорите в микрофон — робот распознаёт, выбирает сценарий и отвечает голосом. Текст — запасной канал"
         actions={
           inCall ? (
             <button className="btn-bad" onClick={v.end}>
+              <Icon name="phoneOff" />
               Положить трубку
             </button>
           ) : (
@@ -94,7 +95,7 @@ export function CallPage() {
                 ))}
               </select>
               <button className="primary" onClick={() => { setSelected(null); void v.start({ callerPhone: phone || null, fixture }) }}>
-                📞 Позвонить
+                <Icon name="phone" />Позвонить
               </button>
             </span>
           )
@@ -103,21 +104,18 @@ export function CallPage() {
         <div className="call-bar">
           <span className="row gap wrap">
             <Badge tone={s.status === 'live' ? 'ok' : s.status === 'connecting' ? 'info' : 'neutral'}>
-              {s.status === 'live' ? '● на линии' : s.status === 'connecting' ? 'соединяю…' : s.status === 'ended' ? 'звонок завершён' : 'не на линии'}
+              {s.status === 'live' && <Icon name="statusDot" size={12} />}
+              {s.status === 'live' ? 'на линии' : s.status === 'connecting' ? 'соединяю…' : s.status === 'ended' ? 'звонок завершён' : 'не на линии'}
             </Badge>
             {s.sessionId && <code className="muted small">{s.sessionId}</code>}
-            {s.ready && (
-              <span className="small">
-                каталог <strong>{s.ready.catalog_version}</strong> {s.ready.frozen && <Badge tone="info">🔒 заморожен</Badge>}
-              </span>
-            )}
+            {s.ready?.frozen && <Badge tone="info"><Icon name="lock" size={14} />Каталог заморожен</Badge>}
             {s.ready?.client && <span className="small">клиент: {String(s.ready.client.full_name ?? s.ready.client.client_id)}</span>}
           </span>
 
           {inCall && (
             <span className="row gap wrap">
               <span className="mic-meter" title={v.micOn ? 'Уровень микрофона' : 'Микрофон не включён'}>
-                🎤
+                <Icon name="microphone" spacing="none" />
                 <span className="mic-meter-track">
                   <span className="mic-meter-fill" style={{ width: `${Math.min(100, v.level * 400)}%` }} />
                 </span>
@@ -144,10 +142,10 @@ export function CallPage() {
               <label className="small" title="Если выключено, пока бот говорит, звук с микрофона не отправляется">
                 <input type="checkbox" checked={v.bargeIn} onChange={(e) => v.setBargeIn(e.target.checked)} /> перебивание
               </label>
-              <button onClick={() => v.setMuted(!v.muted)}>{v.muted ? '🔇 Включить микрофон' : '🎤 Выключить микрофон'}</button>
+              <button onClick={() => v.setMuted(!v.muted)}><Icon name={v.muted ? 'microphoneOff' : 'microphone'} />{v.muted ? 'Включить микрофон' : 'Выключить микрофон'}</button>
               {v.botSpeaking && (
                 <button className="btn-bad" onClick={v.interrupt}>
-                  ■ Стоп
+                  <Icon name="stop" />Стоп
                 </button>
               )}
             </span>
@@ -163,7 +161,7 @@ export function CallPage() {
 
       <div className="split">
         <div className="stack">
-          <Panel title="Разговор" hint="Серым — то, что распознаётся прямо сейчас. Клик по реплике — трассировка хода справа" className="call-transcript">
+          <Panel title="Разговор" className="call-transcript">
             {s.turns.length ? (
               <LiveTranscript turns={s.turns} selected={selectedTurn?.turn ?? null} onSelect={setSelected} />
             ) : (

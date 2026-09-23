@@ -1,7 +1,7 @@
 import { TARGET_ROUTER_MS, type LatencyStage, type Stats } from '../../api'
 import { useCatalog } from '../../lib/catalog-context'
 import { DECISION_LABEL, LANG_LABEL, STAGES, ms, pct, totalTone } from '../../lib/format'
-import { BarList, Kpi, TotalLatency } from '../ui'
+import { BarList } from '../ui'
 
 const TOP_SCENARIOS = 8
 
@@ -10,18 +10,34 @@ const TOP_SCENARIOS = 8
  * и насколько долго клиент ждёт ответа в худших случаях. Инженерные метрики — в «Распределениях».
  */
 export function StatsKpis({ stats }: { stats: Stats }) {
-  const total = stats.latency_ms.total
+  const p95 = stats.latency_ms.total?.p95
+  const responseTime = p95 === undefined
+    ? '—'
+    : `${(p95 / 1000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} с`
   return (
-    <div className="kpis">
-      <Kpi label="Звонков" value={stats.sessions} />
-      <Kpi label="Ходы с переводом оператору" value={pct(stats.handoff_rate)} hint="Доля ходов, где робот передал разговор человеку" />
-      <Kpi label="Ходы с уточнением" value={pct(stats.unclear_rate)} hint="Доля ходов, где робот не понял с первого раза и переспросил (SYS_UNCLEAR)" />
-      <Kpi
-        label="Время ответа, p95"
-        value={total ? <TotalLatency value={total.p95} /> : '—'}
-        hint="95% ответов быстрее этого. Ориентир — 1,5 с от конца речи клиента до первого звука"
-      />
-    </div>
+    <section className="overview-strip" aria-label="Ключевые показатели звонков">
+      <div className="overview-volume">
+        <span className="overview-label">Всего звонков</span>
+        <strong className="overview-volume-value">{stats.sessions.toLocaleString('ru-RU')}</strong>
+      </div>
+      <div className="overview-stat">
+        <span className="overview-label">Передано оператору</span>
+        <strong className="overview-value">{pct(stats.handoff_rate)}</strong>
+        <span className="overview-caption">доля ходов</span>
+        <span className="overview-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, stats.handoff_rate * 100))}%` }} /></span>
+      </div>
+      <div className="overview-stat">
+        <span className="overview-label">Робот уточнил</span>
+        <strong className="overview-value">{pct(stats.unclear_rate)}</strong>
+        <span className="overview-caption">доля ходов</span>
+        <span className="overview-meter" aria-hidden="true"><span style={{ width: `${Math.min(100, Math.max(0, stats.unclear_rate * 100))}%` }} /></span>
+      </div>
+      <div className="overview-stat overview-stat-latency" title="95% ответов быстрее этого времени: от конца речи клиента до первого звука">
+        <span className="overview-label">Время ответа</span>
+        <strong className={`overview-value ${p95 === undefined ? '' : `text-${totalTone(p95)}`}`}>{responseTime}</strong>
+        <span className="overview-caption">95% ответов быстрее</span>
+      </div>
+    </section>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import type { Channel, SessionSummary } from '../../api'
+import { Icon } from '../Icon'
 import { useCatalog } from '../../lib/catalog-context'
 import { CHANNEL_LABEL, dateTime, duration } from '../../lib/format'
 import { Badge, Empty, LangBadge, Panel, ScenarioChip, TotalLatency } from '../ui'
@@ -18,6 +19,7 @@ const FILTERS: { id: FilterId; label: string; test: (session: SessionSummary) =>
 /** Общий журнал супервизора: фильтры сохраняются при переходе между карточками звонков. */
 export function SessionJournal({ sessions, selectedId }: { sessions: SessionSummary[] | null; selectedId?: string }) {
   const { client } = useCatalog()
+  const navigate = useNavigate()
   const [filter, setFilter] = useState<FilterId>('all')
   const [channel, setChannel] = useState<Channel | ''>('')
   const [lang, setLang] = useState('')
@@ -43,16 +45,19 @@ export function SessionJournal({ sessions, selectedId }: { sessions: SessionSumm
   const selectedHidden = selectedId && sessions?.some((session) => session.session_id === selectedId) && !rows.some((session) => session.session_id === selectedId)
 
   return (
-    <Panel className="journal-panel" title="Журнал звонков" hint="Выберите звонок, чтобы посмотреть диалог и решение роутера по каждому ходу">
+    <Panel className="journal-panel" title="Журнал звонков">
       <div className="journal-toolbar">
-        <input
-          className="journal-search"
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Имя, телефон или ID звонка"
-          aria-label="Поиск звонков по имени клиента, телефону или ID"
-        />
+        <div className="journal-search-wrap">
+          <Icon name="search" size={17} spacing="none" />
+          <input
+            className="journal-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Имя, телефон или ID звонка"
+            aria-label="Поиск звонков по имени клиента, телефону или ID"
+          />
+        </div>
         <select value={channel} onChange={(event) => setChannel(event.target.value as Channel | '')} aria-label="Фильтр по каналу">
           <option value="">Все каналы</option>
           {Object.entries(CHANNEL_LABEL).map(([key, label]) => (
@@ -81,7 +86,7 @@ export function SessionJournal({ sessions, selectedId }: { sessions: SessionSumm
         ))}
       </div>
 
-      {sessions && (
+      {sessions && (filter !== 'all' || channel || lang || search || selectedHidden) && (
         <p className="journal-meta" role="status">
           Показано {rows.length} из {sessions.length} звонков
           {selectedHidden && <span> · открытый звонок скрыт фильтром</span>}
@@ -100,7 +105,6 @@ export function SessionJournal({ sessions, selectedId }: { sessions: SessionSumm
                 <th>Язык</th>
                 <th className="right" title="Медиана задержки до ответа по ходам звонка">Задержка p50</th>
                 <th>Итог</th>
-                <th>Действие</th>
               </tr>
             </thead>
             <tbody>
@@ -112,7 +116,11 @@ export function SessionJournal({ sessions, selectedId }: { sessions: SessionSumm
                 return (
                   <tr
                     key={session.session_id}
-                    className={`${!session.ended_at ? 'row-live' : ''} ${session.flagged ? 'row-flagged' : ''} ${isSelected ? 'journal-row-current' : ''}`}
+                    className={`journal-row-clickable ${!session.ended_at ? 'row-live' : ''} ${session.flagged ? 'row-flagged' : ''} ${isSelected ? 'journal-row-current' : ''}`}
+                    onClick={(event) => {
+                      if ((event.target as Element).closest('a, button, input, select, textarea') || window.getSelection()?.toString()) return
+                      navigate(path)
+                    }}
                   >
                     <td className="nowrap" data-label="Начало">
                       {dateTime(session.started_at)}
@@ -141,13 +149,6 @@ export function SessionJournal({ sessions, selectedId }: { sessions: SessionSumm
                         <SessionOutcome s={session} />
                         {session.flagged && <Badge tone="warn">спорный</Badge>}
                       </span>
-                    </td>
-                    <td data-label="Действие">
-                      {isSelected ? (
-                        <span className="session-row-action" aria-label={`Открыт звонок ${session.session_id}`}>Открыт</span>
-                      ) : (
-                        <Link className="session-row-action" to={path} aria-label={`Открыть звонок ${session.session_id}`}>Открыть</Link>
-                      )}
                     </td>
                   </tr>
                 )

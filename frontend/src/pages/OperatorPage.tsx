@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { api, type HandoffEvent } from '../api'
 import { Badge, Empty, ErrorBox, LangBadge, Panel, ScenarioChip } from '../components/ui'
+import { Icon } from '../components/Icon'
 import { useCatalog } from '../lib/catalog-context'
 import { useLiveEvents } from '../lib/live-context'
 
@@ -49,7 +50,7 @@ export function OperatorPage() {
 
   return (
     <div className="stack">
-      <Panel title={`Очередь переводов · ${queue.length}`} hint="Робот передал звонок человеку. Карточка появляется сразу, вместе с контекстом разговора">
+      <Panel title={`Очередь переводов · ${queue.length}`}>
         <ErrorBox error={error} />
         {queue.length ? (
           <div className="handoffs">
@@ -138,7 +139,7 @@ function HandoffCard({ card, onTake }: { card: Card; onTake?: () => void }) {
 
       <footer className="row between">
         <Link to={`/supervisor/sessions/${encodeURIComponent(e.session_id)}`} className="small">
-          Весь разговор и трассировка →
+          Весь разговор и трассировка<Icon name="arrowRight" size={15} spacing="after" />
         </Link>
         {onTake && (
           <button className="primary" onClick={onTake}>

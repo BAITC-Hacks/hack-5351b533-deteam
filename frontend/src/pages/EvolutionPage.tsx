@@ -5,6 +5,7 @@ import { CasesPanel } from '../components/evolution/CasesPanel'
 import { PatchCard, PatchStatusBadge } from '../components/evolution/PatchCard'
 import { PatchProgress, type Progress } from '../components/evolution/PatchProgress'
 import { VersionsPanel } from '../components/evolution/VersionsPanel'
+import { Icon } from '../components/Icon'
 import { Badge, ErrorBox, Panel } from '../components/ui'
 import { useResource } from '../hooks/useResource'
 import { useCatalog } from '../lib/catalog-context'
@@ -97,15 +98,11 @@ export function EvolutionPage() {
     <div className="stack">
       <Panel
         title="Эволюция каталога"
-        hint="Ошибка в трассировке → кейс → модель предлагает минимальную правку описаний и границ → регрессия до/после → вы решаете, применять ли"
         actions={
           catalog && (
             <span className="row gap">
-              <span>
-                текущая <strong>{catalog.version.version}</strong> <code className="muted">{catalog.version.hash}</code>
-              </span>
               <button className={frozen ? 'primary' : ''} disabled={busy} onClick={() => run(async () => setVersion(await api.freeze(!frozen)))}>
-                {frozen ? '🔓 Снять заморозку' : '🔒 Заморозить'}
+                <Icon name={frozen ? 'unlock' : 'lock'} />{frozen ? 'Снять заморозку' : 'Заморозить'}
               </button>
             </span>
           )
@@ -113,7 +110,7 @@ export function EvolutionPage() {
       >
         {frozen ? (
           <div className="callout callout-warn">
-            🔒 Каталог заморожен на время зачётного прогона: применение патчей и откат заблокированы, все ходы логируются с хэшем {catalog?.version.hash}.
+            <Icon name="lock" />Каталог заморожен. Применение патчей и откат временно недоступны.
           </div>
         ) : (
           <p className="muted small">Каталог открыт для изменений. Перед зачётным прогоном заморозьте его.</p>
@@ -141,7 +138,7 @@ export function EvolutionPage() {
       />
 
       {active && (
-        <Panel title="Готовим патч" hint="Обычно 15–20 секунд: предложение, проверка правил, прогон до и после">
+        <Panel title="Готовим патч">
           <PatchProgress patchId={active.id} progress={active.progress} />
         </Panel>
       )}
@@ -149,7 +146,7 @@ export function EvolutionPage() {
       {open && <PatchCard patch={open} frozen={frozen} busy={busy} onApply={() => apply(open.patch_id)} onReject={() => reject(open.patch_id)} onClose={() => setOpenId(null)} />}
 
       <div className="split">
-        <Panel title="Патчи" hint="Все предложенные правки каталога">
+        <Panel title="Патчи">
           {allPatches.length ? (
             <table className="table compact clickable">
               <tbody>

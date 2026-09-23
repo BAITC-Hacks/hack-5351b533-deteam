@@ -1,22 +1,23 @@
 .session-timeline { display: grid; gap: 10px; min-width: 0; }
 .session-timeline-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .session-timeline-duration { color: var(--text); font: 700 13px/1.3 ui-monospace, Consolas, monospace; }
-.session-timeline-scroll { width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 0 2px 7px; scrollbar-color: #bdcdc7 transparent; }
-.session-timeline-scroll:focus-visible { outline: 3px solid #6aaed2; outline-offset: -3px; border-radius: 6px; }
+.session-timeline-scroll { width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 0 2px 7px; scrollbar-color: #bdcbc9 transparent; }
+.session-timeline-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 5px; }
 .session-timeline-canvas { position: relative; width: 100%; }
 .session-timeline-axis { position: relative; height: 27px; margin: 0 22px; border-bottom: 1px solid var(--border); }
 .session-timeline-tick { position: absolute; bottom: 6px; transform: translateX(-50%); color: var(--muted); font: 11px/1 ui-monospace, Consolas, monospace; white-space: nowrap; }
 .session-timeline-track { position: relative; margin: 0 22px; }
 .session-timeline-track::before { position: absolute; left: 0; right: 0; top: 41px; height: 3px; border-radius: 3px; background: var(--neutral-bg); content: ''; }
 .session-timeline-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); opacity: .7; pointer-events: none; }
-.session-timeline-greeting { position: absolute; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 58px; min-width: 0; padding: 7px 9px; overflow: hidden; border: 1px dashed var(--border); border-radius: 9px; background: var(--neutral-bg); color: var(--muted); font-size: 11px; white-space: nowrap; }
+.session-timeline-greeting { position: absolute; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 58px; min-width: 0; padding: 7px 9px; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--neutral-bg); color: var(--muted); font-size: 11px; white-space: nowrap; }
 .session-timeline-greeting span { font-family: ui-monospace, Consolas, monospace; }
-.session-timeline-block, .session-timeline-sequence-turn { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; min-height: 58px; padding: 7px 9px; border: 1px solid #c8d9d1; border-radius: 9px; background: var(--surface); color: var(--text); text-align: left; box-shadow: 0 2px 5px rgb(25 61 45 / 7%); }
+.session-timeline-block, .session-timeline-sequence-turn { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; min-height: 58px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); text-align: left; }
 .session-timeline-block { position: absolute; z-index: 1; height: 58px; overflow: hidden; }
 .session-timeline-block:hover, .session-timeline-sequence-turn:hover, .session-timeline-missing-turn:hover { border-color: var(--accent); background: var(--accent-bg); }
-.session-timeline-block.is-selected, .session-timeline-sequence-turn.is-selected, .session-timeline-missing-turn.is-selected { z-index: 2; border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; background: var(--accent-bg); }
+.session-timeline-block.is-selected, .session-timeline-sequence-turn.is-selected, .session-timeline-missing-turn.is-selected { z-index: 2; border-color: var(--accent); outline: 1px solid var(--accent); outline-offset: 1px; background: var(--accent-bg); }
+.session-timeline-block:focus-visible, .session-timeline-sequence-turn:focus-visible, .session-timeline-missing-turn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .session-timeline-block.is-doubtful, .session-timeline-sequence-turn.is-doubtful, .session-timeline-missing-turn.is-doubtful { border-color: var(--warn); }
-.session-timeline-block.is-doubtful:not(.is-selected), .session-timeline-sequence-turn.is-doubtful:not(.is-selected) { background: #fffaf0; }
+.session-timeline-block.is-doubtful:not(.is-selected), .session-timeline-sequence-turn.is-doubtful:not(.is-selected) { background: #fbf8f2; }
 .session-timeline-turn-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; font-size: 11px; line-height: 1.2; white-space: nowrap; }
 .session-timeline-turn-head strong { overflow: hidden; text-overflow: ellipsis; }
 .session-timeline-doubt { color: var(--warn); font-weight: 750; }

@@ -13,7 +13,7 @@ export function DialogStatePanel({ state }: { state: DialogState | null }) {
   }
   const slots = Object.entries(state.slots ?? {})
   return (
-    <Panel title="Состояние диалога" hint="Что робот знает и помнит прямо сейчас">
+    <Panel title="Состояние диалога">
       <table className="kv">
         <tbody>
           <tr>

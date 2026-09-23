@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 import { FLAG_CONFIDENCE, api, type Case, type SessionDetail, type Trace } from '../api'
+import { Icon } from '../components/Icon'
 import { CaseForm } from '../components/supervisor/CaseForm'
 import { SessionInspector } from '../components/supervisor/SessionInspector'
 import { SessionOutcome } from '../components/supervisor/SessionOutcome'
@@ -64,7 +65,6 @@ function SessionDetailView({ id }: { id: string }) {
           s.caller_phone ?? c?.phone,
           dateTime(s.started_at),
           `${s.turns} ходов`,
-          `каталог ${s.catalog_version}`,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -78,12 +78,11 @@ function SessionDetailView({ id }: { id: string }) {
           ))}
           <span className="muted small">медиана до ответа</span> <TotalLatency value={s.latency_total_p50} />
         </div>
-        <h3>Линия времени</h3>
         <SessionTimeline model={timeline} traces={s.traces} selected={selectedTurn} onSelect={select} />
       </Panel>
 
       <div className="split session-layout">
-        <Panel title="Диалог" hint="Реплики и время от начала звонка. Выберите ход для разбора справа" className="dialog-panel">
+        <Panel title="Диалог" className="dialog-panel">
           <SessionRecordingPlayer
             recording={s.recording}
             ended={Boolean(s.ended_at)}
@@ -168,7 +167,7 @@ function Dialog({ session, selected, onSelect, hasCase, timings }: { session: Se
                   <ScenarioChip key={s.scenario_id} id={s.scenario_id} />
                 ))}
                 {isDoubtful(trace) && <Badge tone="warn">сомневался</Badge>}
-                {hasCase(turn) && <Badge tone="bad">✗ отмечено</Badge>}
+                {hasCase(turn) && <Badge tone="bad"><Icon name="close" size={12} />отмечено</Badge>}
                 <button
                   type="button"
                   className="turn-detail-button"
