@@ -1,173 +1,305 @@
-// Контракт между фронтендом и бэкендом Voice Router.
-// Бэкенд возвращает ровно эти структуры (snake_case), фронт их только отображает.
-// Если стартовый кит или бэкенд диктуют другие поля — правим здесь, остальное подтянется по типам.
+// Типы фронта по контрактам команды. Источник правды — /contracts:
+//   trace.schema.json, dialog-state.schema.json, evolution.schema.json, openapi.yaml, ws-events.schema.json
+// Здесь только то, что фронт реально использует. Меняется контракт — правим здесь.
 
 export type Lang = 'ru' | 'kk' | 'mixed'
+export type ResponseLang = 'ru' | 'kk'
+export type Channel = 'web' | 'phone' | 'text'
 
-/** fast — быстрый путь для очевидных запросов, llm — LLM-слой для сложных */
-export type RoutePath = 'fast' | 'llm'
+/** SC01…SC40 или SYS_OUT_OF_SCOPE / SYS_UNCLEAR / SYS_GOODBYE */
+export type ScenarioId = string
 
-/** Что робот решил сделать на этой реплике */
-export type Decision =
-  | 'run_scenario' // запустить сценарий
-  | 'switch_scenario' // клиент сменил тему — переключаемся
-  | 'resume_scenario' // возврат к прерванной теме
-  | 'clarify' // не уверен — переспрашивает вместо угадывания
-  | 'handoff' // передача оператору вместе с контекстом
+export type Decision = 'run' | 'continue' | 'confirm' | 'cancel' | 'clarify' | 'handoff' | 'out_of_scope' | 'goodbye'
 
-export type Emotion = 'neutral' | 'positive' | 'negative'
+export type FastPath = 'slot_pattern' | 'yes_no' | 'operator_request' | 'goodbye_word' | 'fast_path_scenario'
 
-export interface Client {
-  id: string
-  name: string
-  summary?: string // коротко: какие полисы, что в mock_backend
+export interface ScenarioScore {
+  scenario_id: ScenarioId
+  confidence: number
+  name?: string
+  segment?: string // кусок реплики, к которому относится сценарий
+  reason?: string // на английском, до 12 слов (ROUTER.md)
+  boundary_rule?: string | null
 }
 
-export interface ScenarioRef {
-  id: string
-  title: string
+export interface LatencyMs {
+  stt: number
+  triage: number
+  router: number
+  response: number
+  tts_first_audio: number
+  total: number // от конца речи клиента до первого звука ответа
 }
 
-export interface ScenarioCandidate extends ScenarioRef {
-  confidence: number // 0..1
-  reason: string // почему выбран / почему отвергнут
-}
-
-/** Задержки по этапам, мс. Ориентиры из ТЗ: routing ≤ 500, total ≤ 1500 */
-export interface Latency {
-  stt_ms?: number
-  routing_ms: number
-  response_ms?: number // генерация текста ответа
-  tts_ms?: number // до первого звука
-  total_ms: number // от конца реплики до начала ответа
-}
-
-export interface DialogContext {
-  active: ScenarioRef | null
-  interrupted: ScenarioRef[] // стек прерванных тем, к которым можно вернуться
-  queued: ScenarioRef[] // темы, названные в одной реплике, но ещё не обработанные
-}
-
-export interface TurnTrace {
-  route_path: RoutePath
+/** trace.schema.json — трассировка одного хода */
+export interface Trace {
+  turn: number
+  transcript: string
+  language: Lang
+  scenarios: ScenarioScore[] // несколько — если в реплике несколько тем
+  alternatives: ScenarioScore[]
+  reason: string
+  slots: Record<string, unknown>
+  actions: string[] // find_client, book_appointment:preview, get_claim:error
+  latency_ms: LatencyMs
   decision: Decision
-  selected: ScenarioCandidate | null
-  alternatives: ScenarioCandidate[]
-  rationale: string // обоснование выбора для супервизора
-  params: Record<string, string | number | null> // извлечённые из речи параметры
-  missing_params: string[]
-  context: DialogContext
-  pending_confirmation: { action: string; description: string } | null // необратимое действие ждёт «да» клиента
-  handoff: { reason: string } | null
-  latency: Latency
-  model?: string
+  response_language: ResponseLang
+  response_text: string
+  response_source?: 'template' | 'llm' | 'kb_template'
+  fast_path?: FastPath | null
+  speculative_hit?: boolean
+  second_opinion?: { model: string; scenarios: ScenarioScore[]; agreed: boolean } | null
+  router_model?: string | null
+  catalog_version: string
+  active_scenario?: ScenarioId | null
+  stack?: ScenarioId[]
+  emotion?: string
+  urgency?: string
+  channel?: Channel
+  interrupted?: boolean
+  client_id?: string | null
 }
 
-export interface Turn {
-  id: string
+/** dialog-state.schema.json */
+export interface DialogState {
   session_id: string
-  index: number // 1..10
-  created_at: string
-  user: { text: string; lang: Lang; input: 'voice' | 'text'; emotion?: Emotion }
-  bot: { text: string; lang: Lang; audio_url: string | null }
-  trace: TurnTrace
-  feedback?: TurnFeedback
+  channel: Channel
+  language: ResponseLang
+  client: { client_id: string; full_name: string; phone?: string; identified_by: string } | null
+  active: {
+    scenario_id: ScenarioId
+    name?: string
+    step: string
+    expected_slot?: string | null
+    missing_slots?: string[]
+  } | null
+  stack: { scenario_id: ScenarioId; name?: string; reason: 'topic_switch' | 'multi_intent' | 'deferred_by_client'; slots?: Record<string, unknown> }[]
+  slots: Record<string, unknown>
+  pending_confirmation: { action: string; inputs: Record<string, unknown>; spoken_summary?: string } | null
+  unclear_streak: number
+  completed: ScenarioId[]
+  handoff?: { queue: string } | null
 }
 
-export type SessionStatus = 'active' | 'ended' | 'handed_off'
-
-export interface Session {
-  id: string
-  client: Client | null
-  status: SessionStatus
-  started_at: string
-  max_turns: number
+/** GET /api/clients — персоны из mock_backend */
+export interface Client {
+  client_id: string
+  full_name: string
+  phone: string
+  city?: string
+  preferred_language?: string
+  products?: string[]
 }
 
-export type TurnInput = { kind: 'audio'; audio: Blob } | { kind: 'text'; text: string }
-
-export interface ScenarioParam {
+export interface ScenarioBrief {
+  scenario_id: ScenarioId
   name: string
-  description: string
-  required: boolean
+  name_ru: string
+  domain: string
+  category: string
+  priority: 'normal' | 'high' | 'urgent'
+  fast_path_eligible: boolean
+  requires_identification: boolean
+  requires_confirmation: boolean
 }
 
-/** Элемент каталога (scenarios.json из стартового кита) */
-export interface Scenario {
-  id: string
-  title: string
-  description: string
-  boundaries: string // чем отличается от соседних сценариев
-  params: ScenarioParam[]
-  actions: string[]
-  irreversible: boolean // требует подтверждения клиента
-  examples: { ru: string[]; kk: string[] }
+/** evolution.schema.json#/$defs/CatalogVersion */
+export interface CatalogVersion {
+  version: string
+  parent: string | null
+  hash: string
+  applied_patch: string | null
+  created_at: string
+  frozen: boolean
+  current?: boolean
+  note?: string
+  primary_acc?: number | null
 }
 
-export interface TurnFeedback {
-  correct: boolean
-  expected_scenario_id?: string
-  comment?: string
+/** GET /api/catalog */
+export interface Catalog {
+  version: CatalogVersion
+  scenarios: ScenarioBrief[]
 }
 
-export interface SupervisorStats {
+/** openapi SessionSummary — строка журнала */
+export interface SessionSummary {
+  session_id: string
+  channel: Channel
+  caller_phone: string | null
+  client_id: string | null
+  started_at: string
+  ended_at: string | null // null — звонок идёт
+  end_reason: string | null
+  turns: number
+  languages: Lang[]
+  scenarios: ScenarioId[]
+  handoff_queue: string | null
+  latency_total_p50: number
+  catalog_version: string
+  flagged: boolean // ход с низкой уверенностью, SYS_UNCLEAR или ручная пометка
+}
+
+/** Запись звонка: совпадение её оси с t событий подтверждает timebase. */
+export type SessionRecording =
+  | {
+      status: 'ready'
+      url: string
+      mime_type: string
+      duration_ms: number
+      timebase?: 'session_start'
+    }
+  | {
+      status: 'processing' | 'unavailable' | 'failed'
+      url?: null
+      mime_type?: string | null
+      duration_ms?: number | null
+      timebase?: 'session_start'
+    }
+
+/** GET /api/sessions/{id} */
+export interface SessionDetail extends SessionSummary {
+  transcript: { turn: number; role: 'client' | 'bot'; text: string; lang: string }[]
+  traces: Trace[]
+  final_state: DialogState | null
+  recording?: SessionRecording | null
+}
+
+export type LatencyStage = keyof LatencyMs
+
+/** openapi Stats — агрегаты для супервизора */
+export interface Stats {
   sessions: number
   turns: number
-  resolved_rate: number // доля завершённых звонков, закрытых роботом без оператора
-  accuracy: number | null // по разметке супервизора
-  avg_routing_ms: number
-  p95_routing_ms: number
-  avg_total_ms: number
-  fast_path_share: number
-  clarify_rate: number
+  by_scenario: { scenario_id: ScenarioId; count: number }[]
+  by_language: Record<string, number>
+  by_decision: Record<string, number>
+  confidence_histogram: { bucket: string; count: number }[]
+  latency_ms: Partial<Record<LatencyStage, { p50: number; p95: number }>>
+  speculative_hit_rate: number
+  template_rate: number
   handoff_rate: number
-  low_confidence_rate: number
-  confusions: { expected: ScenarioRef; predicted: ScenarioRef; count: number }[]
+  unclear_rate: number
+  flagged_turns: {
+    session_id: string
+    turn: number
+    transcript: string
+    scenario_id: ScenarioId
+    confidence: number
+    decision: Decision
+  }[]
 }
 
-/** Чем закончился звонок */
-export type CallOutcome =
-  | 'active' // идёт сейчас
-  | 'resolved' // робот закрыл вопрос сам
-  | 'unresolved' // закончился на переспросе / без сценария
-  | 'handed_off' // передан оператору
-
-export type CallFlag =
-  | 'low_confidence' // хотя бы одна реплика с уверенностью ниже порога
-  | 'slow' // хотя бы один ответ дольше 1,5 с
-  | 'marked_wrong' // супервизор отметил ошибку
-  | 'mixed_lang' // было смешение RU+KZ
-
-/** Строка журнала звонков — бэкенд собирает её из реплик сессии */
-export interface CallSummary {
-  session: Session
-  turns_count: number
-  outcome: CallOutcome
-  scenario_path: { scenario: ScenarioRef | null; decision: Decision }[] // по одному шагу на реплику
-  langs: Lang[]
-  flags: CallFlag[]
-  avg_total_ms: number
-  max_total_ms: number
-  last_activity_at: string
+/** evolution.schema.json#/$defs/Case */
+export interface Case {
+  case_id: string
+  source: 'supervisor' | 'synthetic' | 'dev'
+  text: string
+  lang: Lang
+  expected: ScenarioId[]
+  observed?: ScenarioId[]
+  session_id?: string | null
+  turn?: number | null
+  note?: string
+  created_at: string
 }
 
-export interface CallDetails {
-  summary: CallSummary
-  turns: Turn[]
+/** POST /api/cases — «неверно» у хода */
+export interface CaseCreate {
+  session_id?: string
+  turn?: number
+  text: string
+  lang?: Lang
+  expected: ScenarioId[] // порядок важен: первый — основной
+  note?: string
 }
 
-export interface VoiceRouterApi {
-  listClients(): Promise<Client[]>
-  listScenarios(): Promise<Scenario[]>
-  startSession(clientId: string | null): Promise<Session>
-  sendTurn(sessionId: string, input: TurnInput): Promise<Turn>
-  endSession(sessionId: string): Promise<void>
-  getStats(): Promise<SupervisorStats>
-  listCalls(): Promise<CallSummary[]> // все звонки, новые сверху
-  getCall(sessionId: string): Promise<CallDetails>
-  sendFeedback(turnId: string, feedback: TurnFeedback): Promise<void>
+/** Событие WS /ws/supervisor. Конверт общий, остальные поля зависят от type */
+export interface SupervisorEvent {
+  type: string
+  t: number
+  session_id: string
+  turn?: number | null
+  [key: string]: unknown
 }
 
-export const LOW_CONFIDENCE = 0.6
-export const TARGET_ROUTING_MS = 500
-export const TARGET_TOTAL_MS = 1500
+// Пороги из концепта (ARCHITECTURE.md, docs/frontend)
+export const FLAG_CONFIDENCE = 0.75 // ниже — ход спорный
+export const TARGET_ROUTER_MS = 500
+export const TARGET_TOTAL_MS = 1500 // зелёный
+export const WARN_TOTAL_MS = 3000 // жёлтый, выше — красный
+
+// ---------- Эволюция (evolution.schema.json) ----------
+
+export interface Metrics {
+  n: number
+  primary_acc: number
+  full_match: number
+}
+
+export interface BenchRun {
+  run_id: string
+  catalog_version: string
+  dataset?: { dev?: number; cases?: number }
+  status: 'running' | 'finished' | 'failed'
+  started_at?: string
+  finished_at?: string | null
+  metrics: {
+    all: Metrics
+    by_lang?: Record<string, Metrics>
+    by_type?: Record<string, Metrics>
+    intent_recall?: number
+    confidence_buckets?: { bucket: string; n: number; primary_acc: number }[]
+  }
+  latency_ms?: Record<string, number>
+  errors?: { id: string; text: string; expected: ScenarioId[]; got: ScenarioId[] }[]
+}
+
+export type PatchStatus = 'proposing' | 'validating' | 'regression' | 'ready' | 'applied' | 'rejected' | 'failed'
+export type PatchStage = 'proposing' | 'validating' | 'regression_before' | 'regression_after' | 'ready' | 'failed'
+
+export interface Patch {
+  patch_id: string
+  status: PatchStatus
+  case_ids: string[]
+  base_version: string
+  proposal: {
+    ops: { op: 'add' | 'append' | 'replace' | 'remove'; scenario_id: ScenarioId; field: string; value: unknown }[]
+    rationale: string
+  } | null
+  diff?: { scenario_id: ScenarioId; field: string; before: unknown; after: unknown }[]
+  regression?: {
+    before?: Partial<Metrics> & { run_id?: string }
+    after?: Partial<Metrics> & { run_id?: string }
+    fixed?: string[]
+    broken?: string[]
+  } | null
+  validator_log?: string[]
+  applied_version?: string | null
+  created_at?: string
+}
+
+// ---------- Голосовая сессия WS /ws/voice (ws-events.schema.json) ----------
+
+export interface VoiceEvent {
+  type: string
+  t: number
+  session_id: string
+  turn?: number | null
+  [key: string]: unknown
+}
+
+/** Событие handoff: карточка для оператора */
+export interface HandoffEvent extends VoiceEvent {
+  type: 'handoff'
+  queue: string
+  summary: string
+  context: {
+    client?: Record<string, unknown> | null
+    scenarios?: ScenarioId[]
+    slots?: Record<string, unknown>
+    language?: ResponseLang
+    emotion?: string
+    transcript_tail?: { role: 'client' | 'bot'; text: string }[]
+  }
+}

@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react'
-import type { Turn } from '../../api'
-import { EMOTION_LABEL, pct } from '../../lib/format'
+import type { ScenarioScore, Trace } from '../../api'
+import { useCatalog } from '../../lib/catalog-context'
+import { FAST_PATH_LABEL, LANG_LABEL, RESPONSE_SOURCE_LABEL, pct } from '../../lib/format'
+import { Badge, DecisionBadge, LangBadge, Panel, ScenarioChip } from '../ui'
+import { LatencyWaterfall } from './LatencyWaterfall'
 
-/** Если второй кандидат ближе этого к выбранному — подсвечиваем как «на грани» */
+/** Если второй кандидат ближе этого к выбранному — подсвечиваем «на грани» */
 const CLOSE_MARGIN = 0.15
-import { Badge, ConfidenceBadge, DecisionBadge, Empty, LangBadge, Panel, RouteBadge } from '../ui'
-import { LatencyBars } from './LatencyBars'
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <div className="trace-section">
       <h3>{title}</h3>
@@ -16,143 +17,188 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-/** Трассировка одной реплики: что услышали → что решили и почему → альтернативы → контекст → задержки */
-export function TracePanel({ turn, extra }: { turn: Turn | null; extra?: ReactNode }) {
-  if (!turn) {
-    return (
-      <Panel title="Трассировка" hint="После каждой реплики здесь появится решение роутера">
-        <Empty>Реплик пока нет. Начните звонок и скажите что-нибудь.</Empty>
-      </Panel>
-    )
-  }
-  const { trace, user } = turn
-  const candidates = trace.selected ? [trace.selected, ...trace.alternatives] : trace.alternatives
-  const margin = trace.selected && trace.alternatives[0] ? trace.selected.confidence - trace.alternatives[0].confidence : null
-  const close = margin !== null && margin < CLOSE_MARGIN
-
+function ScoreRow({ s, chosen }: { s: ScenarioScore; chosen: boolean }) {
+  const { scenarioName } = useCatalog()
   return (
-    <Panel
-      title={`Трассировка · реплика ${turn.index}`}
-      hint="Что услышал робот, какой сценарий выбрал, почему и за сколько"
-      actions={trace.model && <span className="muted small">модель: {trace.model}</span>}
-      className="trace"
-    >
-      {extra}
-
-      <Section title="Транскрипт">
-        <blockquote className="transcript">{user.text}</blockquote>
-        <div className="row gap">
-          <LangBadge lang={user.lang} />
-          <Badge>{user.input === 'voice' ? 'голос' : 'текст'}</Badge>
-          {user.emotion && user.emotion !== 'neutral' && (
-            <Badge tone={user.emotion === 'negative' ? 'bad' : 'ok'}>{EMOTION_LABEL[user.emotion]}</Badge>
-          )}
+    <li className={chosen ? 'score score-chosen' : 'score'}>
+      <div className="row between">
+        <span>
+          {scenarioName(s.scenario_id)} <code className="muted small">{s.scenario_id}</code>
+        </span>
+        <span className="num small">{pct(s.confidence)}</span>
+      </div>
+      <div className="bar">
+        <div className="bar-fill" style={{ width: pct(s.confidence) }} />
+      </div>
+      {s.segment && <div className="small">«{s.segment}»</div>}
+      {s.reason && <div className="muted small">{s.reason}</div>}
+      {s.boundary_rule && (
+        <div className="small">
+          <span className="muted">Правило границы:</span> {s.boundary_rule}
         </div>
-      </Section>
+      )}
+    </li>
+  )
+}
 
-      <Section title="Решение">
-        <div className="row gap">
+function ActionChip({ action }: { action: string }) {
+  const [name, mode] = action.split(':')
+  if (mode === 'preview') return <Badge tone="warn" title="Ждёт подтверждения клиента">{name} · ждёт «да»</Badge>
+  if (mode === 'error') return <Badge tone="bad" title="Действие вернуло ошибку">{name} · ошибка</Badge>
+  return <Badge tone="ok">{name}</Badge>
+}
+
+/** Сначала решение для проверки супервизором, затем подробная трассировка по trace.schema.json */
+export function TracePanel({ trace, extra, embedded = false }: { trace: Trace; extra?: ReactNode; embedded?: boolean }) {
+  const top = trace.scenarios[0]
+  const runnerUp = trace.alternatives[0]
+  const margin = top && runnerUp ? top.confidence - runnerUp.confidence : null
+  const slots = Object.entries(trace.slots ?? {})
+
+  const content = (
+    <>
+      <Section title="Решение робота">
+        <div className="row gap wrap">
           <DecisionBadge decision={trace.decision} />
-          <RouteBadge path={trace.route_path} />
+          {trace.emotion && trace.emotion !== 'neutral' && <Badge tone="bad">эмоция: {trace.emotion}</Badge>}
+          {trace.urgency && trace.urgency !== 'normal' && <Badge tone="warn">срочность: {trace.urgency}</Badge>}
+          {trace.interrupted && <Badge tone="info">клиент перебил бота</Badge>}
         </div>
-        {trace.selected ? (
-          <div className="scenario-pick">
-            <div className="row between">
-              <strong>{trace.selected.title}</strong>
-              <ConfidenceBadge value={trace.selected.confidence} />
-            </div>
-            <code className="muted small">{trace.selected.id}</code>
-          </div>
-        ) : (
-          <p className="muted">Сценарий не выбран</p>
-        )}
-        <p className="rationale">{trace.rationale}</p>
-        {trace.handoff && (
-          <div className="callout callout-bad">Передача оператору: {trace.handoff.reason}. Контекст диалога уходит вместе с клиентом.</div>
-        )}
-        {trace.pending_confirmation && (
-          <div className="callout callout-warn">
-            Необратимое действие <code>{trace.pending_confirmation.action}</code> — ждём подтверждения клиента.
-            <br />
-            {trace.pending_confirmation.description}
-          </div>
-        )}
+        <p className="rationale">{trace.reason}</p>
+        {extra}
       </Section>
 
-      <Section title="Альтернативы">
-        {close && (
+      <Section title={trace.scenarios.length > 1 ? `Выбранные сценарии · ${trace.scenarios.length}` : 'Выбранный сценарий'}>
+        {margin !== null && margin < CLOSE_MARGIN && (
           <div className="callout callout-warn">
-            Второй вариант отстаёт всего на {pct(margin!)} — робот был на грани. Стоит проверить.
+            Альтернатива отстаёт всего на {pct(margin)} — робот был на грани. Стоит проверить.
           </div>
         )}
-        {candidates.length ? (
-          <ul className="candidates">
-            {candidates.map((c, i) => (
-              <li key={c.id} className={i === 0 && trace.selected ? 'candidate-chosen' : ''}>
-                <div className="row between">
-                  <span>
-                    {i === 0 && trace.selected && '✓ '}
-                    {c.title}
-                  </span>
-                  <span className="small">{pct(c.confidence)}</span>
-                </div>
-                <div className="bar">
-                  <div className="bar-fill" style={{ width: pct(c.confidence) }} />
-                </div>
-                <div className="muted small">{c.reason}</div>
-              </li>
+        {trace.scenarios.length ? (
+          <ul className="scores">
+            {trace.scenarios.map((s) => (
+              <ScoreRow key={s.scenario_id} s={s} chosen />
             ))}
           </ul>
         ) : (
-          <p className="muted">Нет</p>
+          <p className="muted">Сценарий не выбран</p>
         )}
       </Section>
 
-      <Section title="Параметры из речи">
-        {Object.keys(trace.params).length || trace.missing_params.length ? (
+      <Section title="Действия и данные">
+        <div className="row gap wrap actions">
+          {trace.actions.length ? trace.actions.map((a) => <ActionChip key={a} action={a} />) : <span className="muted small">Действий нет</span>}
+        </div>
+        {slots.length > 0 ? (
           <table className="kv">
             <tbody>
-              {Object.entries(trace.params).map(([k, v]) => (
+              {slots.map(([k, v]) => (
                 <tr key={k}>
-                  <td>{k}</td>
-                  <td>{String(v ?? '—')}</td>
-                </tr>
-              ))}
-              {trace.missing_params.map((k) => (
-                <tr key={k} className="text-warn">
-                  <td>{k}</td>
-                  <td>не хватает — робот спросит</td>
+                  <td>
+                    <code>{k}</code>
+                  </td>
+                  <td>{typeof v === 'string' ? v : JSON.stringify(v)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <p className="muted">Не извлечены</p>
+          <p className="muted small">Слоты не извлечены</p>
         )}
       </Section>
 
-      <Section title="Контекст диалога">
-        <table className="kv">
-          <tbody>
-            <tr>
-              <td>Активная тема</td>
-              <td>{trace.context.active?.title ?? '—'}</td>
-            </tr>
-            <tr>
-              <td>Прервано (вернёмся)</td>
-              <td>{trace.context.interrupted.map((s) => s.title).join(' → ') || '—'}</td>
-            </tr>
-            <tr>
-              <td>В очереди</td>
-              <td>{trace.context.queued.map((s) => s.title).join(', ') || '—'}</td>
-            </tr>
-          </tbody>
-        </table>
-      </Section>
+      <details key={trace.turn} className="trace-section">
+        <summary className="trace-details-summary">Подробности: реплики, альтернативы, модель и задержки</summary>
 
-      <Section title="Задержка по этапам">
-        <LatencyBars latency={trace.latency} />
-      </Section>
+        <Section title="Реплика клиента">
+          <blockquote className="transcript">{trace.transcript}</blockquote>
+          <LangBadge lang={trace.language} />
+        </Section>
+
+        <Section title={`Ответ бота · ${LANG_LABEL[trace.response_language] ?? trace.response_language}`}>
+          <p className="bot-reply">{trace.response_text}</p>
+        </Section>
+
+        {trace.alternatives.length > 0 && (
+          <Section title="Альтернативы">
+            <ul className="scores">
+              {trace.alternatives.map((s) => (
+                <ScoreRow key={s.scenario_id} s={s} chosen={false} />
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {trace.second_opinion && (
+          <Section title="Второе мнение">
+            <div className="row gap wrap">
+              <Badge>{trace.second_opinion.model}</Badge>
+              <Badge tone={trace.second_opinion.agreed ? 'ok' : 'warn'}>
+                {trace.second_opinion.agreed ? 'согласна с роутером' : 'не согласна с роутером'}
+              </Badge>
+              {trace.second_opinion.scenarios.map((s) => (
+                <ScenarioChip key={s.scenario_id} id={s.scenario_id} confidence={s.confidence} />
+              ))}
+            </div>
+          </Section>
+        )}
+
+        <Section title="Технические признаки">
+          <div className="row gap wrap">
+            <Badge>каталог {trace.catalog_version}</Badge>
+            {trace.fast_path ? (
+              <Badge tone="ok" title="Детерминированный быстрый путь, LLM-роутер не вызывался">
+                без роутера: {FAST_PATH_LABEL[trace.fast_path] ?? trace.fast_path}
+              </Badge>
+            ) : (
+              trace.router_model && <Badge title="Модель роутера">{trace.router_model}</Badge>
+            )}
+            {trace.speculative_hit && (
+              <Badge tone="info" title="Роутер угадал сценарий по части фразы, пока клиент ещё говорил">
+                спекулятивное попадание
+              </Badge>
+            )}
+            {trace.response_source && <Badge>ответ: {RESPONSE_SOURCE_LABEL[trace.response_source] ?? trace.response_source}</Badge>}
+          </div>
+        </Section>
+
+        <Section title="Контекст диалога">
+          <table className="kv">
+            <tbody>
+              <tr>
+                <td>Активный сценарий</td>
+                <td>{trace.active_scenario ? <ScenarioChip id={trace.active_scenario} /> : '—'}</td>
+              </tr>
+              <tr>
+                <td>Отложенные темы</td>
+                <td>
+                  {trace.stack?.length ? (
+                    <span className="row gap wrap">
+                      {trace.stack.map((id) => (
+                        <ScenarioChip key={id} id={id} />
+                      ))}
+                    </span>
+                  ) : (
+                    '—'
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </Section>
+
+        <Section title="Задержка по этапам">
+          <LatencyWaterfall latency={trace.latency_ms} />
+        </Section>
+      </details>
+    </>
+  )
+
+  if (embedded) return content
+
+  return (
+    <Panel title={`Ход ${trace.turn}`} hint="Что решил робот и что сделал в этом ходе" className="trace">
+      {content}
     </Panel>
   )
 }
