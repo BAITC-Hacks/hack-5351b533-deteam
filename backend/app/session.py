@@ -30,6 +30,7 @@ class Frame:
     defer_reason: str | None = None
     new: bool = True
     errors: dict = field(default_factory=dict)
+    options: list | None = None     # предложенные ближайшие слоты (no_availability): «да» = первый из них
 
 class Ctx:
     """Интерфейс для планов сценариев."""
@@ -55,19 +56,23 @@ class Ctx:
                 return ask_step(n)
         return None
 
+    def said(self):
+        """Последняя реплика клиента (для проверок, где LLM-слоту нельзя верить на слово)."""
+        return next((h["text"] for h in reversed(self.sess.history) if h["role"] == "client"), "")
+
     def contact_phone(self):
         self.default("phone", self.sess.gslots.get("phone") or (self.client or {}).get("phone") or self.sess.caller_phone)
 
     def identify(self, ask_note=None):
+        """АОН уже проверен в Session.__init__; здесь только названные клиентом телефон или ИИН."""
         if self.client: return None
         for key in ("phone", "iin"):
-            v = self.s(key) or (self.sess.caller_phone if key == "phone" else None)
+            v = self.s(key)
             if not v: continue
             r = self.call("find_client", **{key: v})
             if "error" not in r:
                 c = self.backend.client(r["client_id"])
-                self.sess.client = {"client_id": c["client_id"], "full_name": c["full_name"], "phone": c["phone"], "city": c["city"],
-                                    "identified_by": "caller_id" if v == self.sess.caller_phone and key == "phone" and not self.f.slots.get("phone") else key}
+                self.sess.client = {"client_id": c["client_id"], "full_name": c["full_name"], "phone": c["phone"], "city": c["city"], "identified_by": key}
                 self.sess.gslots.setdefault("phone", c["phone"])
                 return None
             self.f.slots.pop(key, None); self.sess.gslots.pop(key, None)
@@ -90,14 +95,18 @@ class Ctx:
                 return Step("done", facts={"policy": pn, "product": p["product"], "expected": products}, error={"code": "invalid_input", "message": f"Policy {pn} is {p['product']}, not {'/'.join(products)}"})
         ps = self.call("get_policies", client_id=self.client["client_id"]).get("policies", [])
         if products: ps = [p for p in ps if p["product"] in products]
-        pt = self.s("product_type")
+        pt = self.s("product_type") or normalize.product_in_text(self.said())
         if pt and len(ps) > 1: ps = [p for p in ps if p["product"] == pt] or ps
         live = [p for p in ps if p["status"] in ("active", "not_started")] or ps
         if prefer_expiring and len(live) > 1: live = sorted(live, key=lambda p: p["end_date"])[:1]
         if len(live) == 1:
             self.set("policy_number", live[0]["policy_number"]); return None
         if not live:
-            return Step("done", facts={"no_policy_of_type": products or "any"}, error={"code": "not_found", "message": f"Client has no {'/'.join(products or ['any'])} policy"})
+            kind = "/".join(products or ["any"])
+            if self.f.asked.get("policy_number"):       # номер уже спрашивали и полис так и не нашёлся -> оператор
+                return handoff_step("operator_general", reason=f"no {kind} policy found for the client")
+            return Step("ask", slot="policy_number", facts={"no_policy_found_for_client": kind, "or_operator": True},
+                        error={"code": "not_found", "message": f"Client has no {kind} policy"})
         return Step("ask", slot="policy_number", facts={"client_policies": [f"{p['policy_number']} ({p['product']})" for p in live]})
 
     def call(self, name, **inputs):
@@ -126,13 +135,22 @@ class Ctx:
     def on_error(self, res, slot=None):
         e = res["error"]; code = e["code"]
         if code in ("not_found", "invalid_input") and slot:
-            n = self.f.errors.get(slot, 0) + 1; self.f.errors[slot] = n
+            # идентификация: телефон и ИИН считаются вместе: повтор один раз -> другой идентификатор -> оператор
+            ident = slot in GLOBAL_SLOTS
+            key = "_identify" if ident else slot
+            n = self.f.errors.get(key, 0) + 1; self.f.errors[key] = n
             self.f.slots.pop(slot, None)
+            if ident: self.sess.gslots.pop(slot, None)
             if n == 1: return Step("ask", slot=slot, facts={"problem": e["message"], "ask_again": True}, error=e)
-            if slot == "phone" and n == 2: return Step("ask", slot="iin", facts={"problem": e["message"], "try_other_identifier": True}, error=e)
-            return handoff_step("operator_general", problem=e["message"], reason="could not identify after retries")
+            if ident and n == 2:
+                other = "iin" if slot == "phone" else "phone"
+                return Step("ask", slot=other, facts={"problem": e["message"], "try_other_identifier": True, "or_operator": True}, error=e)
+            return handoff_step("operator_general", problem=e["message"], reason="could not identify after retries" if ident else f"{slot} not found twice")
         if code == "no_availability":
-            self.f.slots.pop("preferred_date", None)
+            asked_date = self.f.slots.pop("preferred_date", None)
+            m = re.search(r"nearest:\s*(.+)$", e["message"])
+            if m:   # предлагаем ближайшие слоты одним вопросом «какой удобнее»
+                return Step("ask", slot="preferred_date", facts={"requested_date_unavailable": asked_date, "nearest_options": [x.strip() for x in m.group(1).split(",")]}, error=e)
             return Step("ask", slot="preferred_date", facts={"problem": e["message"]}, error=e)
         if code == "service_unavailable":
             return handoff_step("operator_general", problem=e["message"])
@@ -201,6 +219,11 @@ class Session:
                             **({"irreversible": kit.actions()[name]["irreversible"]} if preview else
                                {"result": None if "error" in res else _jsonable(res), "error": res.get("error"), "duration_ms": ms})})
 
+    def preferred_language(self):
+        if not self.client: return None
+        c = self.backend.client(self.client["client_id"])
+        return (c or {}).get("preferred_language")
+
     def router_state(self):
         a = self.active
         st = {"client": {"name": self.client["full_name"].split()[0], "identified": True} if self.client else None,
@@ -236,20 +259,33 @@ class Session:
             return {"decision": "offer_yes" if yn == "yes" else "offer_no", "fast_path": "yes_no", "scenarios": [self.offer_next[0]] if yn == "yes" else [], "slots": {}}
         if not a and self.offer_return and yn:
             return {"decision": "resume" if yn == "yes" else "offer_no", "fast_path": "yes_no", "scenarios": [self.offer_return.sid] if yn == "yes" else [], "slots": {}}
+        if a and a.awaiting == "slot" and a.expected_slot == "preferred_date" and a.options and yn == "yes":
+            return {"decision": "continue", "fast_path": "yes_no", "scenarios": [a.sid], "slots": {"preferred_date": a.options[0][:10]}}
         if a and a.awaiting == "slot" and a.expected_slot:
             v = normalize.extract_pattern(a.expected_slot, text)
-            if v and len(re.sub(r"[\d\s+\-()]", " ", text).split()) <= 6:
+            if v and normalize.extra_words(text) <= 6:
                 return {"decision": "continue", "fast_path": "slot_pattern", "scenarios": [a.sid], "slots": {a.expected_slot: v}}
         if normalize.is_operator(text):
             return {"decision": "handoff", "fast_path": "operator_request", "scenarios": ["SC37"], "slots": {}}
+        if normalize.is_greeting(text):
+            if not self.lang_lock: self.language = "kk" if normalize.KK_LETTERS.search(text) else "ru"
+            return {"decision": "greet", "fast_path": "greeting", "scenarios": ["SYS_UNCLEAR"], "slots": {}}
+        if normalize.is_robot_question(text):
+            if not self.lang_lock: self.language = "kk" if normalize.KK_LETTERS.search(text) else "ru"
+            return {"decision": "out_of_scope", "fast_path": "fast_path_scenario", "robot": True, "scenarios": ["SYS_OUT_OF_SCOPE"], "slots": {}}
         if not a and normalize.is_bye(text):
             return {"decision": "goodbye", "fast_path": "goodbye_word", "scenarios": ["SYS_GOODBYE"], "slots": {}}
 
         r = await route_full(text, state=self.router_state(), history=self.history[-7:-1], on_early=on_early)
         slots = normalize.slots(r.get("slots"))
+        if "injured" in slots and not re.search(r"пострада|ранен|цел[ыа]?\b|жив|травм|112|скор|зардап|аман|жарақат|жарала", text, re.I): slots.pop("injured")
+        # однозначные форматы добираем детерминированно, если роутер их пропустил («полис СК ОГПО 104501», «CL 500287»)
+        for k in ("policy_number", "claim_number"):
+            if k not in slots and (v := normalize.extract_pattern(k, text)) and (k == "policy_number" or "CL" in normalize.latin_ids(text)): slots[k] = v
         if RU_SWITCH.search(text): self.lang_lock = "ru"
         elif KK_SWITCH.search(text): self.lang_lock = "kk"
-        if r.get("language") == "mixed": self.language = self.lang_lock or "kk"
+        if not re.search(r"[а-яёәіңғүұқөһ]", text, re.I): pass       # только номер/цифры/латиница: язык разговора не меняем
+        elif r.get("language") == "mixed": self.language = self.lang_lock or self.preferred_language() or r.get("response_language") or "kk"
         else: self.language = r.get("response_language") or self.language
         extra = [s["scenario_id"] for s in r.get("scenarios", []) if not s["scenario_id"].startswith("SYS_") and s["confidence"] >= config.CONF_CLARIFY]
         base = {"router": r, "slots": slots, "fast_path": None}
@@ -265,6 +301,16 @@ class Session:
         d = decide(r, self.unclear_streak)
         return {**base, **d}
 
+    def _reprompt(self):
+        """Вопрос, на котором остановились (слот, подтверждение, оффер), чтобы вернуть клиента после отвлечения."""
+        a = self.active if self.active and self.active.status == "active" else None
+        if not (a and a.awaiting) and not self.offer_next and not self.offer_return: return None
+        last = next((h["text"] for h in reversed(self.history) if h["role"] == "bot"), "") or ""
+        qs = re.findall(r"[^.!?…]*\?", last)
+        if qs: return qs[-1].strip()
+        sents = [x for x in re.split(r"(?<=[.!?…])\s+", last.strip()) if x]
+        return sents[-1] if sents else None          # «Назовите ИИН водителя…» — повелительная просьба без «?»
+
     # ---------- execution
     def _step(self, f: Frame) -> Step:
         st = PLANS[f.sid](Ctx(self, f))
@@ -273,6 +319,7 @@ class Session:
 
     def _apply(self, f: Frame, st: Step):
         f.awaiting = f.expected_slot = f.pending_action = f.pending_gate = None
+        f.options = (st.facts or {}).get("nearest_options") if st.kind == "ask" else None
         if st.kind == "ask":
             f.awaiting, f.expected_slot = "slot", st.slot
             f.asked[st.slot] = f.asked.get(st.slot, 0) + 1
@@ -343,10 +390,14 @@ class Session:
     def execute(self, u: dict) -> list:
         dec = u["decision"]
         a = self.active if self.active and self.active.status == "active" else None
+        if dec == "greet":
+            return [{"kind": "greet", "resume": self.active.sid if self.active and self.active.status == "active" else None}]
+        if dec == "goodbye" and not u.get("fast_path") and not self.completed and not self.stack and self.turn_no <= 1 and not normalize.is_bye(u.get("text", "")):
+            return [{"kind": "greet", "resume": None}]   # роутер принял приветствие/обрывок первой реплики за прощание
         if dec == "goodbye":
             self.ended = True; return [{"kind": "goodbye"}]
         if dec == "out_of_scope":
-            return [{"kind": "out_of_scope"}]
+            return [{"kind": "out_of_scope", "robot": bool(u.get("robot")), "reprompt": self._reprompt()}]
         if dec == "clarify":
             self.unclear_streak += 1
             return [{"kind": "clarify", "options": u.get("clarify", [])[:2]}]

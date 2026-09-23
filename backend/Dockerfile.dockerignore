@@ -1,0 +1,21 @@
+# Исключения для сборки backend/Dockerfile. Контекст — корень репозитория, поэтому пути от корня.
+# (BuildKit берёт <Dockerfile>.dockerignore рядом с Dockerfile; см. также backend/.dockerignore)
+.git
+**/.git
+**/.venv
+**/__pycache__
+**/*.pyc
+**/node_modules
+**/.env
+**/.env.*
+**/*.sqlite
+frontend
+infra
+docs
+fixtures
+tools
+catalog
+regression
+backend/tts_cache
+backend/logs
+backend/tests/__pycache__

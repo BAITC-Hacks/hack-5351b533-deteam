@@ -1,0 +1,10 @@
+# Для сборки с контекстом backend/ (docker build backend). Основной путь — контекст = корень репо,
+# там действует backend/Dockerfile.dockerignore.
+.venv
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+*.sqlite
+tts_cache
+logs

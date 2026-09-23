@@ -1,7 +1,9 @@
 """Планы действий для 40 сценариев. Каждый план идемпотентен: вызывается на каждом ходу, чтения мемоизируются,
 необратимые действия выполняются только после явного подтверждения (ctx.preview -> ctx.confirmed).
 План возвращает Step: ask / offer / preview / done / handoff."""
+import datetime as dt, re
 from dataclasses import dataclass, field
+from . import config
 
 @dataclass
 class Step:
@@ -58,7 +60,8 @@ def SC02(ctx):
     inputs = {"product_type": "ogpo", "phone": ctx.s("phone"), "vehicle_plate": ctx.s("vehicle_plate"), "drivers_iin": ctx.s("drivers_iin"), "price": q["price"],
               "client_id": (ctx.client or {}).get("client_id")}
     if not ctx.confirmed("create_policy"):
-        return ctx.preview("create_policy", inputs, summary={"product": "ОГПО", "vehicle_plate": ctx.s("vehicle_plate"), "drivers": len(ctx.s("drivers_iin")), "price_kzt": q["price"], "sms_phone": ctx.s("phone")})
+        return ctx.preview("create_policy", inputs, summary={"product": "ОГПО", "vehicle_plate": ctx.s("vehicle_plate"), "drivers": len(ctx.s("drivers_iin")), "price_kzt": q["price"],
+                                                             "payment_link_sms_to": ctx.s("phone")})
     r = ctx.call("create_policy", **inputs)
     if "error" in r: return ctx.on_error(r)
     ctx.call("send_sms", phone=ctx.s("phone"))
@@ -82,7 +85,7 @@ def SC04(ctx):
     bm = ctx.call("get_bm_class", iin=ctx.s("new_driver_iin"))
     inputs = {"policy_number": ctx.s("policy_number"), "new_driver_iin": ctx.s("new_driver_iin")}
     if not ctx.confirmed("update_policy"):
-        return ctx.preview("update_policy", inputs, summary={"policy_number": ctx.s("policy_number"), "add_driver_iin": ctx.mask_iin(ctx.s("new_driver_iin")), "driver_bm_class": bm.get("bm_class")})
+        return ctx.preview("update_policy", inputs, summary={"policy_number": ctx.s("policy_number"), "add_driver_iin_ends_with": ctx.s("new_driver_iin")[-4:], "driver_bm_class": bm.get("bm_class")})
     r = ctx.call("update_policy", **inputs)
     if "error" in r: return ctx.on_error(r)
     return done(driver_added=True, extra_premium_kzt=r["extra_premium"], payment_link="by SMS" if r["extra_premium"] else None)
@@ -113,7 +116,7 @@ def SC06(ctx):
               "trip_end": ctx.s("trip_end"), "travelers_count": ctx.s("travelers_count"), "price": q["price"], "client_id": (ctx.client or {}).get("client_id")}
     if not ctx.confirmed("create_policy"):
         return ctx.preview("create_policy", inputs, summary={"country": ctx.s("trip_country"), "from": ctx.s("trip_start"), "to": ctx.s("trip_end"),
-                                                             "travelers": ctx.s("travelers_count"), "price_kzt": q["price"], "sms_phone": ctx.s("phone")})
+                                                             "travelers": ctx.s("travelers_count"), "price_kzt": q["price"], "payment_link_sms_to": ctx.s("phone")})
     r = ctx.call("create_policy", **inputs)
     if "error" in r: return ctx.on_error(r)
     ctx.call("send_sms", phone=ctx.s("phone"))
@@ -140,15 +143,21 @@ def SC10(ctx):
     ctx.call("transfer_to_operator", queue="corporate_sales")
     return handoff("corporate_sales", company=ctx.s("company_name"), employees=ctx.s("employees_count"), callback="within a working day")
 
+NO_INJURED = re.compile(r"\bцел[ыа]?\b|не пострада|никто не|без пострадав|пострадавших нет|нет пострадавших|\bжив[ыа]?\b|аман|ешкім|зардап шеккен жоқ|травм нет", re.I)
+
 def SC11(ctx):
     steps = ctx.call("kb_lookup", topic="claims.road_accident_now").get("answer")
-    if ctx.s("injured") is None: return ask("injured", instructions=steps[:2])
+    # «никто не пострадал» принимаем, только если клиент это сказал (роутер иногда додумывает injured=false)
+    if ctx.s("injured") is False and not ctx.f.asked.get("injured") and not NO_INJURED.search(ctx.said()): ctx.f.slots.pop("injured", None)
+    if ctx.s("injured") is None:
+        return Step("ask", slot="injured", facts={"first_step": steps[1]},
+                    question={"ru": "Все целы, никто не пострадал?", "kk": "Барлығы аман ба, зардап шеккендер жоқ па?"})
     if ctx.s("injured"):
         ctx.call("transfer_to_operator", queue="claims_team")
         return handoff("claims_team", injured=True, call_112=True)
     ctx.contact_phone()
     if ctx.s("phone"): ctx.call("send_sms", phone=ctx.s("phone"))
-    return done(injured=False, instructions=steps[1:5], instructions_sms=bool(ctx.s("phone")), next="file the claim when ready")
+    return done(injured=False, instructions=steps[1:4], instructions_sms=bool(ctx.s("phone")), next="file the claim when ready")
 
 def SC12(ctx):
     if (st := ctx.need("culprit_vehicle_plate")): return st
@@ -186,18 +195,27 @@ def _claim_flow(ctx, product, docs_key, queue_if=None):
 def SC13(ctx):
     r = _claim_flow(ctx, "casco", "casco", queue_if=lambda t: any(w in t.lower() for w in ("theft", "stolen", "угна", "угон", "total", "тотал", "ұрла")))
     if isinstance(r, Step): return r
-    return Step("done", facts={**r, "next": "inspection of the car"}, offer_next=("SC20", {"claim_number": r["claim_number"]}), question="Записать на осмотр?")
+    return Step("done", facts={"claim_number": r["claim_number"], "documents_sms": True, "next": "inspection of the car"},
+                offer_next=("SC20", {"claim_number": r["claim_number"]}), question="Записать на осмотр?")
 
 def SC14(ctx):
     r = _claim_flow(ctx, "property", "property")
     return r if isinstance(r, Step) else done(**r)
 
 def SC15(ctx):
-    if (st := ctx.identify()): return st
-    if (st := ctx.policy(["travel"])): return st
-    ctx.call("get_policy", policy_number=ctx.s("policy_number"))
+    """Срочно: не больше одного вопроса (телефон), затем сразу медицинский ассистанс, даже если полис не нашёлся."""
+    if not ctx.client and (ctx.s("phone") or ctx.s("iin")): ctx.identify()
+    if not ctx.client and not ctx.s("policy_number") and not ctx.f.asked.get("phone"):
+        return ask("phone", urgent="right after this we connect to 24/7 medical assistance")
+    pn = None
+    if ctx.s("policy_number"):
+        p = ctx.call("get_policy", policy_number=ctx.s("policy_number")); pn = None if "error" in p else p["policy_number"]
+    elif ctx.client:
+        ps = [p for p in ctx.call("get_policies", client_id=ctx.client["client_id"]).get("policies", []) if p["product"] == "travel"]
+        live = [p for p in ps if p["status"] == "active"] or ps
+        if live: pn = live[0]["policy_number"]; ctx.set("policy_number", pn)
     ctx.call("transfer_to_operator", queue="medical_assistance_24_7")
-    return handoff("medical_assistance_24_7", rule=ctx.kb("products.travel.notes")[1], location=ctx.s("location"))
+    return handoff("medical_assistance_24_7", policy_number=pn, rule=ctx.kb("products.travel.notes")[1], location=ctx.s("location"))
 
 def SC16(ctx):
     r = _claim_flow(ctx, "accident", "accident")
@@ -220,7 +238,10 @@ def SC18(ctx):
         if "error" not in c: ctx.default("product_type", {"ogpo_victim": "ogpo"}.get(c["claim_type"], c["claim_type"]))
         else: c = None
     if (st := ctx.need("product_type")): return st
-    facts = {"documents": ctx.kb(f"claims.documents.{DOCS_KEY.get(ctx.s('product_type'), 'casco')}"), "how_to_submit": ctx.kb("claims.submission")}
+    ctx.contact_phone()
+    if ctx.s("phone"): ctx.call("send_sms", phone=ctx.s("phone"))
+    docs = ctx.kb(f"claims.documents.{DOCS_KEY.get(ctx.s('product_type'), 'casco')}")
+    facts = {"documents": docs[:3] if ctx.s("phone") else docs, "documents_sms": bool(ctx.s("phone")), "how_to_submit": ctx.kb("claims.submission")}
     if c: facts.update(claim_number=c["claim_number"], claim_status=c["status"], missing_documents=c.get("missing_documents", []), claim_next_step=c.get("next_step"))
     return done(**facts)
 
@@ -280,7 +301,7 @@ def SC24(ctx):
     if (st := ctx.identify()): return st
     ctx.call("kb_lookup", topic="products.dms.e_card")
     ctx.call("send_sms", phone=ctx.client["phone"])
-    return done(e_card=ctx.kb("products.dms.e_card"), sent_to_phone=ctx.client["phone"])
+    return done(e_card=ctx.kb("products.dms.e_card"), sms_sent_to_client_phone=True)
 
 def SC25(ctx):
     if ctx.s("policy_number"):
@@ -289,7 +310,11 @@ def SC25(ctx):
         return done(policy_number=p["policy_number"], product=p["product"], status=p["status"], end_date=p["end_date"])
     if (st := ctx.identify(ask_note="policy")): return st
     ps = ctx.call("get_policies", client_id=ctx.client["client_id"]).get("policies", [])
-    if ctx.s("product_type"): ps = [p for p in ps if p["product"] == ctx.s("product_type")] or ps
+    if ctx.s("product_type"):
+        m = [p for p in ps if p["product"] == ctx.s("product_type")]
+        if not m:
+            return done(no_policy_of_type=ctx.s("product_type"), other_policies=[{"policy_number": p["policy_number"], "product": p["product"], "status": p["status"], "end_date": p["end_date"]} for p in ps])
+        ps = m
     return done(policies=[{"policy_number": p["policy_number"], "product": p["product"], "status": p["status"], "end_date": p["end_date"]} for p in ps])
 
 def SC26(ctx):
@@ -306,10 +331,18 @@ def SC27(ctx):
     if (st := ctx.identify()): return st
     if (st := ctx.policy(None, prefer_expiring=True)): return st
     p = ctx.call("get_policy", policy_number=ctx.s("policy_number"))
+    # продление уже оплачено, но полис не выпущен (C003, P-3001): не берём деньги второй раз, передаём специалисту
+    pay = ctx.backend.check_payment(client_id=ctx.client["client_id"])
+    if "error" not in pay and pay["payment_status"] == "charged_policy_not_issued" and pay["product"] == p["product"]:
+        pay = ctx.call("check_payment", client_id=ctx.client["client_id"])
+        ctx.call("transfer_to_operator", queue="operator_general")
+        return handoff("operator_general", policy_number=p["policy_number"], policy_status=p["status"], already_paid_kzt=pay["amount"], paid_on=pay["date"],
+                       issue="renewal already paid but the policy was not issued; specialist will issue it, no second payment needed")
     inputs = {"policy_number": ctx.s("policy_number")}
+    start = max(dt.date.fromisoformat(p["end_date"]) + dt.timedelta(days=1), dt.date.fromisoformat(config.TODAY)).isoformat()
     if not ctx.confirmed("renew_policy"):
-        return ctx.preview("renew_policy", inputs, summary={"policy_number": p["policy_number"], "product": p["product"], "current_policy_ends": p["end_date"], "new_term": "12 months after the current one",
-                                                            "price_kzt": p.get("premium"), "installments": ctx.kb(f"payments.installments.{p['product']}") if p["product"] in ("casco", "ogpo", "travel") else None})
+        return ctx.preview("renew_policy", inputs, summary={"policy_number": p["policy_number"], "product": p["product"], "status": p["status"], "current_policy_ends": p["end_date"],
+                                                            "new_policy_from": start, "term": "12 months", "price_kzt": p.get("premium")})
     r = ctx.call("renew_policy", **inputs)
     if "error" in r: return ctx.on_error(r)
     ctx.call("send_sms", phone=ctx.client["phone"])
@@ -330,10 +363,16 @@ def SC28(ctx):
 
 def SC29(ctx):
     if (st := ctx.identify()): return st
-    if (st := ctx.need("contact_field", "new_value")): return st
+    if (st := ctx.need("contact_field")): return st
+    if not ctx.s("new_value"):
+        q = {"phone": ("Назовите, пожалуйста, новый номер телефона.", "Жаңа телефон нөміріңізді айтыңызшы."),
+             "email": ("Назовите, пожалуйста, новую электронную почту.", "Жаңа электрондық поштаңызды айтыңызшы."),
+             "address": ("Назовите, пожалуйста, новый адрес.", "Жаңа мекенжайыңызды айтыңызшы.")}.get(ctx.s("contact_field"))
+        return Step("ask", slot="new_value", question={"ru": q[0], "kk": q[1]} if q else None)
     inputs = {"client_id": ctx.client["client_id"], "contact_field": ctx.s("contact_field"), "new_value": ctx.s("new_value")}
     if not ctx.confirmed("update_contact"):
-        return ctx.preview("update_contact", inputs, summary={"field": ctx.s("contact_field"), "new_value": ctx.s("new_value")})
+        nv = ctx.s("new_value")
+        return ctx.preview("update_contact", inputs, summary={"field": ctx.s("contact_field"), "new_value": ctx.mask_email(nv) if ctx.s("contact_field") == "email" else nv})
     r = ctx.call("update_contact", **inputs)
     if "error" in r: return ctx.on_error(r, "new_value")
     return done(updated=ctx.s("contact_field"))
@@ -350,7 +389,11 @@ def SC30(ctx):
     return done(payment_status=r["payment_status"], amount_kzt=r["amount"], date=r["date"])
 
 def SC31(ctx):
-    return done(payments=ctx.call("kb_lookup", topic="payments").get("answer"), product=ctx.s("product_type"))
+    pay = ctx.call("kb_lookup", topic="payments").get("answer")
+    pt = ctx.s("product_type")
+    inst = pay["installments"].get(pt) or pay["installments"].get(f"{pt}_individual") if pt else None
+    if inst: return done(product=pt, installments=inst, payment_methods=pay["methods"][:2])
+    return done(payments=pay)
 
 def SC32(ctx):
     if ctx.client: ctx.default("iin", ctx.backend.client(ctx.client["client_id"])["iin"])
@@ -364,7 +407,7 @@ def SC33(ctx):
     if (st := ctx.need("city")): return st
     r = ctx.call("get_offices", city=ctx.s("city"))
     if "error" in r: return fail(r, cities=[o["city"] for o in ctx.kb("offices")])
-    return done(address=f"{r['city']}, {r['address']}", hours=r["hours"], contact_center_hours=ctx.kb("company.contact_center"))
+    return done(address=f"{r['city']}, {r['address']}", hours=r["hours"])
 
 def SC34(ctx):
     return done(app_help=ctx.call("kb_lookup", topic="app_help").get("answer"))
@@ -387,8 +430,13 @@ def SC37(ctx):
     ctx.call("transfer_to_operator", queue=q)
     return handoff(q)
 
+SHARED_YES = re.compile(r"(?<!не )(?<!не\s)\b(продиктовал|сказал|назвал|сообщил|отправил|переслал|дал|ввёл|ввел)\w*\s+(им\s+|ему\s+)?(код|смс|sms|данные|cvv|пин|номер карты)"
+                        r"|(код|кодты|картаның деректерін)\w*\s+(айтып\s+)?(қойдым|айттым|бердім|жібердім)", re.I)
+
 def SC38(ctx):
     rules = ctx.call("kb_lookup", topic="fraud_policy").get("answer")
+    # клиент уже сказал, что сообщил код/данные карты -> не переспрашиваем, сразу в безопасность
+    if "shared_codes_answered" not in ctx.f.gates and SHARED_YES.search(ctx.said()): ctx.f.gates["shared_codes_answered"] = "yes"
     if (st := ctx.need("fraud_details")): return Step("ask", facts={"fraud_policy": rules[:2]}, slot="fraud_details")
     if not ctx.gate("shared_codes_answered"):
         return Step("offer", facts={"fraud_policy": rules[:2]}, question="Вы уже сообщили им код или данные карты?", gate="shared_codes_answered")

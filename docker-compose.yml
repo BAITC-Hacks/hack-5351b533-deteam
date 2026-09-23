@@ -1,0 +1,36 @@
+# Voice Router: бэкенд одной командой.
+#   1) backend/.env с OPENAI_API_KEY=sk-...
+#   2) docker compose up --build            -> http://localhost:8000/api/health
+# Фронт (Dockerfile пока нет): cd frontend && npm ci && npm run dev   -> http://localhost:5173
+# Asterisk поднимается отдельно своим compose: cd infra/asterisk && docker compose up -d --build
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: voice-router-api
+    container_name: voice-router-api
+    restart: unless-stopped
+    env_file: backend/.env
+    environment:
+      AUDIOSOCKET: "1"
+      AUDIOSOCKET_PORT: "9092"
+      TTS_PREWARM: "1"
+      DATA_DIR: /app/data
+      REGRESSION_DIR: /app/regression
+      CATALOG_DIR: /app/catalog
+      # Телефония через ARI (Asterisk из infra/asterisk на этом же хосте):
+      # ARI_URL: http://host.docker.internal:8088
+      # ARI_USER: voice-ai
+      # ARI_PASSWORD: ...
+      # AUDIOSOCKET_HOST: host.docker.internal   # адрес, по которому Asterisk достучится до нашего :9092
+    ports:
+      - "8000:8000"   # REST + WS /ws/voice, /ws/supervisor
+      - "9092:9092"   # AudioSocket для Asterisk
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend/tts_cache:/app/backend/tts_cache   # кэш заготовленных фраз TTS
+      - ./regression:/app/regression                 # кейсы, прогоны bench, артефакты эволюции
+      - ./catalog:/app/catalog                       # версии каталога сценариев
+      - ./backend/logs:/app/backend/logs             # журналы сессий

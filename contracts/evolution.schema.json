@@ -114,13 +114,77 @@
         "created_at": {
           "type": "string",
           "format": "date-time"
+        },
+        "router": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "выход роутера на ошибочном ходе (контекст для патчера)",
+          "properties": {
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "boundary_rule": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "catalog_version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scenarios": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "scenario_id": {
+                    "type": "string"
+                  },
+                  "confidence": {
+                    "type": "number"
+                  },
+                  "segment": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "boundary_rule": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
     "CaseCreate": {
       "type": "object",
       "required": [
-        "text",
         "expected"
       ],
       "properties": {
@@ -194,8 +258,26 @@
         },
         "note": {
           "type": "string"
+        },
+        "observed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "context": {
+          "type": "object",
+          "description": "STATE роутера до хода (dialog-state для роутера)"
+        },
+        "source": {
+          "enum": [
+            "supervisor",
+            "synthetic"
+          ],
+          "default": "supervisor"
         }
-      }
+      },
+      "description": "нужен text или session_id+turn (тогда text, observed, lang и context берутся из трассировки хода)"
     },
     "Metrics": {
       "type": "object",
@@ -233,7 +315,18 @@
           "type": "string"
         },
         "dataset": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "dev": {
+              "type": "integer"
+            },
+            "cases": {
+              "type": "integer"
+            },
+            "n": {
+              "type": "integer"
+            }
+          }
         },
         "status": {
           "enum": [
@@ -370,6 +463,67 @@
               }
             }
           }
+        },
+        "purpose": {
+          "type": "string",
+          "description": "manual | patch PT-xxxx before | patch PT-xxxx after"
+        },
+        "duration_ms": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "description": "только в GET /api/bench/runs/{run_id}",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "lang": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "array"
+              },
+              "got": {
+                "type": "array"
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "decision": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "router_ms": {
+                "type": "integer"
+              }
+            }
+          }
         }
       }
     },
@@ -445,7 +599,10 @@
             "examples.kk"
           ]
         },
-        "value": {}
+        "value": {},
+        "old": {
+          "description": "для replace элемента списка (not_this_if / examples.*): заменяемый элемент"
+        }
       }
     },
     "Patch": {
@@ -565,7 +722,10 @@
                       "examples.kk"
                     ]
                   },
-                  "value": {}
+                  "value": {},
+                  "old": {
+                    "description": "для replace элемента списка (not_this_if / examples.*): заменяемый элемент"
+                  }
                 }
               },
               "maxItems": 4
@@ -594,7 +754,13 @@
                 "type": "string"
               },
               "before": {},
-              "after": {}
+              "after": {},
+              "ops": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         },
@@ -605,21 +771,112 @@
           ],
           "properties": {
             "before": {
-              "type": "object"
+              "type": "object",
+              "description": "метрики версии; расходящиеся и целевые реплики решены большинством из 5 прогонов, сырые метрики первого прогона в raw",
+              "properties": {
+                "run_id": {
+                  "type": "string"
+                },
+                "catalog_version": {
+                  "type": "string"
+                },
+                "n": {
+                  "type": "integer"
+                },
+                "primary_acc": {
+                  "type": "number"
+                },
+                "full_match": {
+                  "type": "number"
+                },
+                "raw": {
+                  "type": "object"
+                },
+                "dev": {
+                  "$ref": "#/$defs/Metrics"
+                },
+                "cases": {
+                  "$ref": "#/$defs/Metrics"
+                }
+              }
             },
             "after": {
-              "type": "object"
+              "type": "object",
+              "description": "метрики версии; расходящиеся и целевые реплики решены большинством из 5 прогонов, сырые метрики первого прогона в raw",
+              "properties": {
+                "run_id": {
+                  "type": "string"
+                },
+                "catalog_version": {
+                  "type": "string"
+                },
+                "n": {
+                  "type": "integer"
+                },
+                "primary_acc": {
+                  "type": "number"
+                },
+                "full_match": {
+                  "type": "number"
+                },
+                "raw": {
+                  "type": "object"
+                },
+                "dev": {
+                  "$ref": "#/$defs/Metrics"
+                },
+                "cases": {
+                  "$ref": "#/$defs/Metrics"
+                }
+              }
             },
             "fixed": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "неверно до и верно после по большинству из 5 прогонов (1 + EVO_RECHECK=4) и разница верных прогонов >= 3"
             },
             "broken": {
               "type": "array",
               "items": {
                 "type": "string"
+              },
+              "description": "верно до и неверно после, разница верных прогонов >= 3 из 5"
+            },
+            "flaky": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "разошлись в первом прогоне, но устойчивой разницы нет"
+            },
+            "targets": {
+              "type": "object",
+              "description": "по кейсам патча",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "expected": {
+                    "type": "array"
+                  },
+                  "before": {
+                    "type": "array"
+                  },
+                  "after": {
+                    "type": "array"
+                  },
+                  "before_ok": {
+                    "type": "string",
+                    "description": "верных прогонов, например \"0/5\""
+                  },
+                  "after_ok": {
+                    "type": "string"
+                  },
+                  "fixed": {
+                    "type": "boolean"
+                  }
+                }
               }
             }
           }
@@ -638,6 +895,51 @@
         },
         "created_at": {
           "type": "string"
+        },
+        "progress": {
+          "type": "object",
+          "description": "последняя стадия (как в patch.progress)",
+          "properties": {
+            "stage": {
+              "type": "string"
+            },
+            "done": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "total": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "timings": {
+          "type": "object",
+          "description": "мс: propose_ms, self_check_ms, before_run_ms, after_run_ms, recheck_ms, regression_ms, total_ms",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "attempts": {
+          "type": "integer",
+          "description": "попыток патчера (повтор после отказа валидатора или провала самопроверки), не больше 3"
+        },
+        "error": {
+          "type": "string"
+        },
+        "patcher": {
+          "type": "object",
+          "description": "model, latency_ms, input_tokens, output_tokens последнего вызова"
         }
       }
     },

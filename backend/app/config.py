@@ -20,7 +20,7 @@ RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "gpt-6-luna")
 PATCHER_MODEL = os.getenv("PATCHER_MODEL", "gpt-6-sol")
 STT_MODEL = os.getenv("STT_MODEL", "gpt-transcribe")
 TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts-2025-12-15")
-TTS_VOICE = os.getenv("TTS_VOICE", "coral")
+TTS_VOICE = os.getenv("TTS_VOICE", "marin")
 SERVICE_TIER = os.getenv("SERVICE_TIER", "priority") or None
 
 TODAY = os.getenv("TODAY", "2026-10-01")

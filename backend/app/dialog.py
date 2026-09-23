@@ -1,34 +1,49 @@
-"""Один ход диалога: понимание -> исполнение -> ответ (ack + шаблон/LLM, стриминг по предложениям) -> трассировка."""
+"""Один ход диалога: понимание -> исполнение -> ответ (ack + шаблон/LLM, стриминг по предложениям) -> трассировка.
+Ранний ack: как только в потоке роутера виден новый уверенный сценарий, его подтверждение («Сейчас рассчитаю…»)
+озвучивается до конца ответа роутера."""
 import asyncio, re, time
 from . import config
 from .catalog import CATALOG
 from .responder import template_for, ack_for, llm_payload, stream_llm, handoff_summary
+from .session import RU_SWITCH, KK_SWITCH
 
 SENT_END = re.compile(r"([.!?…])(\s|$)")
-DEC_MAP = {"offer_yes": "run", "resume": "run", "offer_no": "cancel"}
+DEC_MAP = {"offer_yes": "run", "resume": "run", "offer_no": "cancel", "greet": "clarify"}
 
 async def _noop(*a, **k): return None
 
+def _early_lang(sess, text, e):
+    """Зеркало выбора языка в Session.understand: mixed -> lang_lock (с учётом просьбы в этой реплике) или kk."""
+    lock = "ru" if RU_SWITCH.search(text) else "kk" if KK_SWITCH.search(text) else sess.lang_lock
+    if e.get("language") == "mixed": return lock or sess.preferred_language() or e.get("response_language") or "kk"
+    return e.get("response_language") or sess.language
+
+def _early_ok(sess, e):
+    """Ранний ack только для нового реального сценария с уверенностью запуска вне подтверждений/офферов."""
+    sid = e.get("scenario_id")
+    if not sid or sid.startswith("SYS_") or e.get("confidence", 0) < config.CONF_RUN: return False
+    if e.get("is_continuation") or e.get("confirmation") is not None: return False
+    a = sess.active if sess.active and sess.active.status == "active" else None
+    if a and a.sid == sid: return False
+    if sess.offer_next or sess.offer_return: return False
+    return not any(f.sid == sid for f in sess.stack)
+
 async def process_turn(sess, text, *, t0=None, stt_ms=0, emit=None, speak=None, first_audio: asyncio.Future | None = None):
-    """emit(event) шлёт события клиенту; speak(text, template) ставит фразу в очередь TTS; first_audio резолвится при первом аудиочанке."""
+    """emit(event) шлёт события клиенту; speak(text, template) ставит фразу в очередь TTS; first_audio резолвится при первом аудиочанке.
+
+    latency_ms, мс (t0 = конец речи клиента / получение текста):
+      stt             — распознавание (передаётся снаружи);
+      triage          — understand без роутера (fast path, нормализация);
+      router          — полное время роутера, включая второе мнение;
+      response        — от готового решения роутера до первого произнесённого текста; 0, если ранний ack прозвучал раньше;
+      first_text      — от t0 до первого произнесённого текста (ранний ack, шаблон или первое предложение LLM);
+      tts_first_audio — от первого текста до первого аудиочанка (0 без аудио);
+      total           — от t0 до первого аудиочанка (без аудио — до первого текста).
+    trace.early_ack = {spoken, scenario_id, matched_final}: был ли ранний ack, по какому сценарию, совпал ли с итоговым."""
     emit = emit or _noop; speak = speak or _noop
     t0 = t0 or time.perf_counter()
     sess.turn_no += 1; sess._turn_actions = []; ev_start = len(sess.events)
     sess.history.append({"role": "client", "text": text})
-    t_u0 = time.perf_counter()
-    u = await sess.understand(text)
-    t_u1 = time.perf_counter()
-    r = u.get("router")
-    router_ms = (r or {}).get("_meta", {}).get("latency_ms", 0) + ((r or {}).get("second_opinion") or {}).get("latency_ms", 0)
-    triage_ms = max(0, int((t_u1 - t_u0) * 1000) - router_ms)
-    items = sess.execute(u)
-    for e in sess.events[ev_start:]:
-        await emit({**e})
-    lang = sess.language
-    # --- ответ
-    new_first = next((it for it in items if it.get("new") and it.get("scenario") and it["kind"] not in ("deferred",)), None)
-    ack = ack_for(new_first["scenario"], lang) if new_first and u["decision"] in ("run", "offer_yes") else None
-    tpl = template_for(items, lang)
     t_resp = None; parts = []
     async def say(chunk, template):
         nonlocal t_resp
@@ -38,7 +53,37 @@ async def process_turn(sess, text, *, t0=None, stt_ms=0, emit=None, speak=None, 
         parts.append(chunk)
         await emit({"type": "bot.text.delta", "turn": sess.turn_no, "delta": chunk + " "})
         await speak(chunk, template)
-    if ack: await say(ack, True)
+    early = {"spoken": False, "scenario_id": None, "ack": None}
+    async def on_early(e):
+        early["scenario_id"] = e.get("scenario_id")
+        if not _early_ok(sess, e): return
+        lang_e = _early_lang(sess, text, e)
+        ack_e = ack_for(e["scenario_id"], lang_e)
+        if not ack_e: return
+        sess.language = lang_e          # язык TTS для ack; understand выставит то же значение после роутера
+        early.update(spoken=True, ack=ack_e)
+        await say(ack_e, True)
+    t_u0 = time.perf_counter()
+    u = await sess.understand(text, on_early=on_early)
+    t_u1 = time.perf_counter()
+    r = u.get("router")
+    meta = (r or {}).get("_meta") or {}
+    router_ms = meta.get("total_ms") or (meta.get("latency_ms", 0) + ((r or {}).get("second_opinion") or {}).get("latency_ms", 0))
+    triage_ms = max(0, int((t_u1 - t_u0) * 1000) - router_ms)
+    items = sess.execute(u)
+    for e in sess.events[ev_start:]:
+        await emit({**e})
+    lang = sess.language
+    # --- ответ
+    new_first = next((it for it in items if it.get("new") and it.get("scenario") and it["kind"] not in ("deferred",)), None)
+    runs = new_first is not None and u["decision"] in ("run", "offer_yes")
+    early_ack = {"spoken": early["spoken"], "scenario_id": early["scenario_id"], "matched_final": bool(runs and new_first["scenario"] == early["scenario_id"])}
+    if early["spoken"]:
+        ack = early["ack"]              # уже произнесён; второй раз не говорим, LLM получает его как ack_already_spoken
+    else:
+        ack = ack_for(new_first["scenario"], lang) if runs else None
+        if ack: await say(ack, True)
+    tpl = template_for(items, lang)
     source = "template"
     if tpl:
         await say(tpl, True)
@@ -60,9 +105,11 @@ async def process_turn(sess, text, *, t0=None, stt_ms=0, emit=None, speak=None, 
     t_resp = t_resp or time.perf_counter()
     lat = {"stt": int(stt_ms), "triage": triage_ms, "router": router_ms,
            "response": max(0, int((t_resp - t_u1) * 1000)),
+           "first_text": max(0, int((t_resp - t0) * 1000)),
            "tts_first_audio": max(0, int(((t_first or t_resp) - t_resp) * 1000))}
     lat["total"] = int(((t_first or t_resp) - t0) * 1000)
     trace = build_trace(sess, text, u, items, lat, reply, source)
+    trace["early_ack"] = early_ack
     await emit({"type": "turn.trace", "turn": sess.turn_no, "trace": trace})
     await emit({"type": "dialog.state", "state": sess.state()})
     if sess.handoff and not sess.ended:
@@ -78,6 +125,8 @@ async def process_turn(sess, text, *, t0=None, stt_ms=0, emit=None, speak=None, 
 
 def build_trace(sess, text, u, items, lat, reply, source):
     r = u.get("router") or {}
+    # версия каталога, которой реально пользовался роутер в этом ходе (после применения патча меняется и в живой сессии)
+    sess.catalog_version = (r.get("_meta") or {}).get("catalog_version") or CATALOG.version
     cat = CATALOG.scenarios()
     if r:
         scen = [{"scenario_id": s["scenario_id"], "confidence": round(s["confidence"], 3), "name": cat.get(s["scenario_id"], {}).get("name", s["scenario_id"]),

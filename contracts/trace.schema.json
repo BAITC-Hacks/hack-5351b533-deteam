@@ -245,8 +245,14 @@
         "total": {
           "type": "integer",
           "minimum": 0
+        },
+        "first_text": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "t0 -> первый произнесённый текст (ранний ack, шаблон или первое предложение LLM)"
         }
-      }
+      },
+      "description": "мс от t0 (конец речи). router: полное время роутера со вторым мнением; response: от решения роутера до первого текста (0, если ранний ack прозвучал раньше); first_text: от t0 до первого произнесённого текста; tts_first_audio: от первого текста до первого аудиочанка; total: от t0 до первого аудиочанка"
     },
     "decision": {
       "type": "string",
@@ -290,11 +296,39 @@
         "operator_request",
         "goodbye_word",
         "fast_path_scenario",
+        "greeting",
         null
       ]
     },
     "speculative_hit": {
       "type": "boolean"
+    },
+    "early_ack": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "ранний ack по первым полям потока роутера, до конца его ответа",
+      "required": [
+        "spoken",
+        "scenario_id",
+        "matched_final"
+      ],
+      "properties": {
+        "spoken": {
+          "type": "boolean"
+        },
+        "scenario_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matched_final": {
+          "type": "boolean",
+          "description": "сценарий раннего ack совпал с итоговым новым сценарием хода"
+        }
+      }
     },
     "second_opinion": {
       "type": [

@@ -25,18 +25,29 @@ class Silero:
         return float(out[0][0])
 
 class Segmenter:
-    """Режет входной PCM16 16 kHz на реплики. feed() возвращает события: ('start', t) и ('end', pcm_bytes, t_last_voice)."""
-    def __init__(self, silence_ms=450, start_ms=96, min_speech_ms=250, preroll_ms=300, on=0.5, off=0.35, max_ms=30000):
-        self.vad = Silero(); self.buf = b""; self.speaking = False
-        self.silence_n = int(silence_ms / 32); self.start_n = max(1, int(start_ms / 32)); self.min_n = int(min_speech_ms / 32)
-        self.pre_n = int(preroll_ms / 32); self.on, self.off = on, off; self.max_n = int(max_ms / 32)
-        self.pre = []; self.seg = []; self.voiced_run = 0; self.silent_run = 0; self.voiced_total = 0; self.t_last_voice = None
+    """Режет входной PCM16 16 kHz на реплики по Silero VAD (окно 32 мс).
+    feed() возвращает события:
+      ('start', t)                  речь подтверждена (>= min_speech_ms озвученных окон), можно перебивать бота;
+      ('pause', pcm, t_last_voice)  тишина early_ms внутри реплики: можно начать STT заранее (спекулятивно);
+      ('end', pcm, t_last_voice, voiced_ms)  реплика закончилась (silence_ms тишины), pcm с pre-roll и хвостом ~100 мс;
+      ('drop', t)                   короткий всплеск (кашель, щелчок) без подтверждения, игнорируется.
+    Окно озвучено, если p >= on и RMS >= min_rms (защита от ложных стартов на тихом шуме)."""
+    W = 32  # мс на окно Silero при 16 kHz
+    def __init__(self, silence_ms=450, onset_ms=64, min_speech_ms=160, preroll_ms=400, on=0.5, off=0.35, max_ms=20000, min_rms=0.002, early_ms=200):
+        self.vad = Silero(); self.buf = b""; W = self.W
+        self.silence_n = max(2, round(silence_ms / W)); self.onset_n = max(1, round(onset_ms / W)); self.min_n = max(1, round(min_speech_ms / W))
+        self.pre_n = max(1, round(preroll_ms / W)); self.on, self.off = on, off; self.max_n = int(max_ms / W); self.min_rms = min_rms
+        self.early_n = round(early_ms / W) if 0 < early_ms < silence_ms else 0
+        self.reset()
     def reset(self):
-        self.speaking = False; self.pre, self.seg = [], []; self.voiced_run = self.silent_run = self.voiced_total = 0; self.vad.reset()
+        self.speaking = False; self.confirmed = False; self.seg = []; self.pre = []
+        self.voiced_run = self.silent_run = self.voiced_total = 0; self.t_last_voice = None
+    def _pcm(self): return b"".join(self.seg[: len(self.seg) - max(0, self.silent_run - 3)])
     def force_end(self):
-        if not self.speaking or not self.seg: return None
-        pcm = b"".join(self.seg); t = self.t_last_voice or time.perf_counter(); self.reset()
-        return ("end", pcm, t)
+        """Push-to-talk: закрыть реплику сейчас. None, если речи почти не было."""
+        ok = self.speaking and self.voiced_total >= max(2, self.min_n // 2)
+        ev = ("end", self._pcm(), self.t_last_voice or time.perf_counter(), self.voiced_total * self.W) if ok else None
+        self.reset(); return ev
     def feed(self, data: bytes):
         self.buf += data; evs = []
         step = Silero.CHUNK * 2
@@ -44,24 +55,27 @@ class Segmenter:
             raw, self.buf = self.buf[:step], self.buf[step:]
             x = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
             p = self.vad.prob(x); now = time.perf_counter()
+            loud = float(np.sqrt(np.mean(x * x))) >= self.min_rms
+            voiced = p >= self.on and loud
             if not self.speaking:
                 self.pre.append(raw); self.pre = self.pre[-self.pre_n:]
-                self.voiced_run = self.voiced_run + 1 if p >= self.on else 0
-                if self.voiced_run >= self.start_n:
-                    self.speaking = True; self.seg = list(self.pre); self.silent_run = 0; self.voiced_total = self.voiced_run; self.t_last_voice = now
-                    evs.append(("start", now))
+                self.voiced_run = self.voiced_run + 1 if voiced else 0
+                if self.voiced_run >= self.onset_n:
+                    self.speaking = True; self.seg = list(self.pre); self.pre = []
+                    self.silent_run = 0; self.voiced_total = self.voiced_run; self.t_last_voice = now
             else:
                 self.seg.append(raw)
-                if p >= self.off:
-                    self.silent_run = 0
-                    if p >= self.on: self.voiced_total += 1; self.t_last_voice = now
-                else:
-                    self.silent_run += 1
-                if self.silent_run >= self.silence_n or len(self.seg) >= self.max_n:
-                    pcm = b"".join(self.seg[: len(self.seg) - self.silent_run + 3]); t = self.t_last_voice
-                    ok = self.voiced_total >= self.min_n
-                    self.speaking = False; self.pre, self.seg = [], []; self.voiced_run = self.silent_run = 0
-                    evs.append(("end", pcm, t) if ok else ("drop", now))
+                if voiced: self.voiced_total += 1; self.t_last_voice = now; self.silent_run = 0
+                elif p >= self.off and loud: self.silent_run = 0
+                else: self.silent_run += 1
+            if not self.speaking: continue
+            if not self.confirmed and self.voiced_total >= self.min_n:
+                self.confirmed = True; evs.append(("start", now))
+            if self.silent_run >= self.silence_n or len(self.seg) >= self.max_n:
+                evs.append(("end", self._pcm(), self.t_last_voice, self.voiced_total * self.W) if self.confirmed else ("drop", now))
+                self.reset()
+            elif self.confirmed and self.early_n and self.silent_run == self.early_n:
+                evs.append(("pause", self._pcm(), self.t_last_voice))
         return evs
 
 def wav_bytes(pcm: bytes, sr=16000) -> bytes:

@@ -22,6 +22,9 @@ async def lifespan(app):
     if os.getenv("AUDIOSOCKET", "1") == "1":
         from .telephony import start_audiosocket
         app.state.as_server = await start_audiosocket()
+    if os.getenv("ARI_URL"):   # ARI-контроллер (Stasis voice-ai -> External Media в наш AudioSocket), см. app/ari.py
+        from .ari import start_ari
+        app.state.ari = start_ari()
     yield
 
 app = FastAPI(title="Voice Router", lifespan=lifespan)
@@ -115,36 +118,47 @@ async def ws_supervisor(ws: WebSocket):
 
 @app.websocket("/ws/voice")
 async def ws_voice(ws: WebSocket):
+    """Протокол в contracts/ws-events.schema.json. Бинарные кадры: PCM16 16 kHz (вход), 24 kHz (выход)."""
     await ws.accept()
     async def send_event(e): await ws.send_text(json.dumps(e, ensure_ascii=False))
     async def send_audio(b): await ws.send_bytes(b)
-    call = Call(ws.query_params.get("channel", "web"), send_event, send_audio)
+    qp = ws.query_params
+    call = Call(qp.get("channel", "web"), send_event, send_audio)
     started = False
+    async def start(ev=None):
+        nonlocal started
+        ev = ev or {}
+        call.channel = ev.get("channel") or qp.get("channel", "web")
+        await call.start(caller_phone=ev.get("caller_phone") or qp.get("caller_phone"), lang_hint=ev.get("lang_hint") or qp.get("lang_hint"))
+        started = True
+    def client_ev(ev, tp):
+        return {"type": tp, "t": int((time.perf_counter() - call.t_start) * 1000), "session_id": call.sess.id, "turn": ev.get("turn"), "t_client_ms": ev.get("t_client_ms")}
     try:
         while True:
             m = await ws.receive()
             if m["type"] == "websocket.disconnect": break
             if m.get("bytes") is not None:
-                if not started:
-                    await call.start(caller_phone=ws.query_params.get("caller_phone")); started = True
+                if not started: await start()
                 await call.on_audio(m["bytes"]); continue
-            try: ev = json.loads(m.get("text") or "{}")
-            except Exception: continue
-            t = ev.get("type")
-            if t == "session.start" and not started:
-                ch = ev.get("channel") or ws.query_params.get("channel", "web"); call.channel = ch
-                await call.start(caller_phone=ev.get("caller_phone") or ws.query_params.get("caller_phone"), lang_hint=ev.get("lang_hint")); started = True
-            elif not started:
-                await call.start(caller_phone=ws.query_params.get("caller_phone")); started = True
-            if t == "text.input" and ev.get("text"):
-                asyncio.create_task(call.on_text(ev["text"]))
+            try:
+                ev = json.loads(m.get("text") or "{}"); t = ev.get("type")
+                if not isinstance(t, str): raise ValueError("no type")
+            except Exception:
+                if started: await call.emit({"type": "error", "code": "protocol", "message": "bad JSON frame", "recoverable": True})
+                continue
+            if not started:
+                await start(ev if t == "session.start" else None)
+            if t == "text.input" and (ev.get("text") or "").strip():
+                call._spawn(call.on_text(ev["text"].strip()))
             elif t == "input.commit": await call.commit()
-            elif t == "control.interrupt": await call.player.interrupt()
-            elif t == "control.mute": call.muted = bool(ev.get("muted"))
+            elif t == "control.interrupt": await call.player.interrupt(call.active_turn)
+            elif t == "control.mute": call.set_muted(ev.get("muted"))
             elif t == "session.end": break
-            elif t == "playback.started" and call.sess:
-                await HUB.publish({"type": "playback.started", "t": int((time.perf_counter() - call.t_start) * 1000), "session_id": call.sess.id, "turn": ev.get("turn"), "t_client_ms": ev.get("t_client_ms")})
+            elif t in ("playback.started", "playback.finished"): await HUB.publish(client_ev(ev, t))
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        if started: await call.emit({"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}"[:200], "recoverable": False})
     finally:
         await call.close("client")

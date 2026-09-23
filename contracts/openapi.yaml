@@ -10,7 +10,9 @@ info:
       выход PCM16 LE 24 kHz mono. Текстовые кадры: JSON-события.
     - `WS /ws/supervisor` — поток всех событий всех сессий + события bench/patch/catalog. Только сервер → клиент.
 
-    Телефония: AudioSocket TCP :9092 (протокол в docs/telephony/README.md) + эндпоинты /api/telephony/*.
+    Телефония: AudioSocket TCP :9092 (AUDIOSOCKET_PORT; протокол в docs/telephony/README.md, диалплан contracts/asterisk/extensions.conf)
+    + эндпоинты /api/telephony/*. Сервер шлёт непрерывный поток кадров 0x10 по 20 мс (320 байт), в паузах тишина (keepalive:
+    AudioSocket() Asterisk 22 рвёт сокет после 2 с без активности). Конец звонка: 0x00; перевод: AMI Setvar+Redirect, иначе /outcome.
 servers:
   - url: http://localhost:8000
 tags:
@@ -146,20 +148,75 @@ paths:
       summary: Пометить ход как ошибочный → кейс регрессии
       requestBody: {content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/CaseCreate"}}}}
       responses:
-        "201": {description: Created, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/Case"}}}}
+        "201": {description: "Created (тот же текст+expected уже есть → вернётся существующий кейс). Событие case.created", content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/Case"}}}}
+        "404": {description: ход session_id+turn не найден, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: неверный expected или нет text, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /api/cases/generate:
+    post:
+      tags: [evolution]
+      summary: >-
+        Синтетические трудные реплики: gpt-6-sol пишет пограничные ru/kk/mixed реплики для пар сценариев (из not_this_if и пар одной
+        категории без правила), роутер (route_full + policy) их размечает, неверно смаршрутизированные дважды подряд сохраняются
+        кейсами source=synthetic. Синхронно, 15-35 с.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                n: {type: integer, default: 10, minimum: 2, maximum: 40}
+                pairs: {type: array, items: {type: array, items: {type: string}, minItems: 2, maxItems: 2}, description: "[[\"SC17\",\"SC19\"], ...]; по умолчанию случайные"}
+                uncovered: {type: boolean, default: true, description: половина пар из одной категории без правила границы}
+                effort: {type: string, enum: [low, medium, high], default: medium}
+      responses:
+        "200":
+          description: Все сгенерированные реплики с результатом роутера; saved — созданные кейсы
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  catalog_version: {type: string}
+                  n: {type: integer}
+                  misrouted: {type: integer}
+                  saved: {type: array, items: {$ref: "evolution.schema.json#/$defs/Case"}}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        text: {type: string}
+                        lang: {type: string}
+                        expected: {type: array, items: {type: string}}
+                        got: {type: array, items: {type: string}}
+                        ok: {type: boolean}
+                        confirm_got: {type: array, items: {type: string}, description: повторный прогон для неверных}
+                        stable: {type: boolean, description: ошибка повторилась → сохранено кейсом}
+                        case_id: {type: string}
+                        pair: {type: array, items: {type: string}}
+                        trap: {type: string}
+                        confidence: {type: number}
+                        reason: {type: [string, "null"]}
+                  pairs: {type: array, items: {type: array, items: {type: string}}}
+                  generator: {type: object}
+                  latency_ms: {type: integer}
+        "502": {description: ошибка LLM, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /api/cases/{case_id}:
     delete:
       tags: [evolution]
       parameters: [{name: case_id, in: path, required: true, schema: {type: string}}]
       responses:
         "204": {description: Deleted}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/bench:
     post:
       tags: [evolution]
       summary: Запустить прогон (dev + кейсы) на версии каталога. Прогресс идёт в /ws/supervisor (bench.progress, bench.finished)
       requestBody: {content: {application/json: {schema: {type: object, properties: {catalog_version: {type: string}, include_cases: {type: boolean, default: true}}}}}}
       responses:
-        "202": {description: Accepted, content: {application/json: {schema: {type: object, properties: {run_id: {type: string}}}}}}
+        "202": {description: Accepted, content: {application/json: {schema: {type: object, properties: {run_id: {type: string}, catalog_version: {type: string}, dataset: {type: object}}}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/bench/runs:
     get:
       tags: [evolution]
@@ -191,10 +248,11 @@ paths:
   /api/patches/{patch_id}/apply:
     post:
       tags: [evolution]
+      summary: Новая версия каталога из временной версии патча; промпт роутера пересобран и кэш прогрет до ответа (1-2 с)
       parameters: [{name: patch_id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Новая версия каталога, событие catalog.changed, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/CatalogVersion"}}}}
-        "409": {$ref: "#/components/responses/Frozen"}
+        "409": {description: "каталог заморожен (error.code=frozen) или патч не в статусе ready (error.code=not_ready)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /api/patches/{patch_id}/reject:
     post:
       tags: [evolution]
@@ -221,6 +279,34 @@ paths:
           description: UUID сессии
           content:
             text/plain: {schema: {type: string, format: uuid}, example: 3f6c1a2e-9b7d-4c1e-8a55-2d0c7e9b1f40}
+    get:
+      tags: [telephony]
+      summary: Отладка — последние 50 звонков (регистрация, исход, активен ли AudioSocket)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    uuid: {type: string}
+                    caller: {type: [string, "null"], description: нормализованный +7XXXXXXXXXX}
+                    caller_raw: {type: [string, "null"]}
+                    dnid: {type: [string, "null"]}
+                    channel: {type: [string, "null"]}
+                    uniqueid: {type: [string, "null"]}
+                    registered: {type: boolean, description: "false — AudioSocket пришёл с незарегистрированным UUID (звонок без caller id)"}
+                    action: {enum: [hangup, transfer, pending]}
+                    queue: {type: [string, "null"]}
+                    summary: {type: [string, "null"]}
+                    session_id: {type: [string, "null"], description: "phone-<первые 8 символов uuid>"}
+                    transferred_by: {enum: [ami, dialplan], description: "как выполнен перевод"}
+                    hangup_cause: {type: [string, "null"]}
+                    created: {type: number, description: unix time регистрации}
+                    active: {type: boolean}
   /api/telephony/calls/{call_uuid}/outcome:
     get:
       tags: [telephony]

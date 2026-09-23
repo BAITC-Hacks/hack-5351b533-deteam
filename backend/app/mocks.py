@@ -118,7 +118,9 @@ class Backend:
         if age > pr["max_car_age"][package]:
             alt = "Lite" if package == "Standard" and age <= pr["max_car_age"]["Lite"] else None
             return err("not_eligible", f"Car is {age} years old, {package} allows up to {pr['max_car_age'][package]}" + (f"; Lite package is possible" if alt else ""))
-        rate = next(v for k, v in pr["rate_by_car_age"].items() if int(k.split("-")[0]) <= max(age, 0) <= int(k.split("-")[1]))
+        rates = sorted((int(k.split("-")[0]), int(k.split("-")[1]), v) for k, v in pr["rate_by_car_age"].items())
+        # таблица ставок кончается на 10 годах; для Lite (до 15 лет) берём ставку старшей группы
+        rate = next((v for lo, hi, v in rates if lo <= max(age, 0) <= hi), rates[-1][2])
         price = round(int(car_value) * rate * pr["franchise_coef"][str(int(franchise or 0))] * pr["package_coef"][package])
         return {"price": price, "package": package, "franchise": int(franchise or 0), "car_age": age}
 
@@ -156,7 +158,7 @@ class Backend:
         if not p: return err("not_found", f"Policy {policy_number} not found")
         if p["product"] == "dms" and p.get("details", {}).get("type") == "corporate": return err("not_eligible", "Corporate DMS is renewed by the employer")
         num = f"SQ-{PFX[p['product']]}-{next(COUNTERS['policy'][PFX[p['product']]])}"
-        start = d(p["end_date"]) + dt.timedelta(days=1)
+        start = max(d(p["end_date"]) + dt.timedelta(days=1), TODAY)   # истёкший полис продлевается с сегодняшнего дня
         return {"policy_number": num, "price": p.get("premium"), "start_date": start.isoformat()}
 
     def update_policy(self, policy_number=None, new_driver_iin=None, vehicle_plate=None, **_):
@@ -254,10 +256,11 @@ class Backend:
             return err("no_availability", f"No slots on Sunday {preferred_date}; nearest: {(day + dt.timedelta(days=1)).isoformat()} 09:30")
         return {"clinic_name": cl[0]["name"], "address": f"{city}, {cl[0]['address']}", "slot_datetime": f"{preferred_date} 09:30", "specialty": sp}
 
-    COVER = [("lab", ["lab", "анализ", "талдау"]), ("MRI and CT", ["mri", "ct", "мрт", "кт"]), ("Dental", ["dent", "стомат", "зуб", "тіс"]),
+    # порядок важен: протезы/импланты и косметология раньше общей стоматологии
+    COVER = [("prosthetics", ["prosthe", "протез", "implant", "имплант"]), ("Cosmetology", ["cosmet", "космет"]),
+             ("lab", ["lab", "анализ", "талдау"]), ("MRI and CT", ["mri", "мрт", "кт ", "ct scan", "ct ", "tomograph", "томограф"]), ("Dental", ["dent", "стомат", "зуб", "тіс", "кариес", "caries", "пломб"]),
              ("Ultrasound", ["ultrasound", "узи"]), ("medications", ["medic", "лекарств", "дәрі"]), ("hospitalization", ["hospital", "госпитал", "стационар"]),
-             ("Specialists", ["specialist", "ent", "лор", "кардиолог", "гинеколог", "cardio", "gyne"]), ("Therapist", ["therapist", "терапевт"]),
-             ("Cosmetology", ["cosmet", "космет"]), ("prosthetics", ["prosthe", "протез", "implant", "имплант"])]
+             ("Specialists", ["specialist", "ent", "лор", "кардиолог", "гинеколог", "cardio", "gyne"]), ("Therapist", ["therapist", "терапевт"])]
 
     def check_coverage(self, policy_number=None, service_name=None, **_):
         p, e = self._dms(policy_number)
@@ -269,7 +272,7 @@ class Backend:
         if key:
             hit = [x for x in info["covered"] if key.lower() in x.lower()]
             miss = [x for x in info["not_covered"] if key.lower() in x.lower()]
-            if miss and not (key == "Dental" and hit and "prosthe" not in s): covered, note = False, miss[0]
+            if miss and not (key == "Dental" and hit): covered, note = False, miss[0]
             elif hit: covered, note = True, hit[0]
         return {"covered": covered, "note": note, "package": pkg, "covered_list": info["covered"], "not_covered_list": info["not_covered"]}
 
