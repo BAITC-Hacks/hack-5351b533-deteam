@@ -1,94 +1,95 @@
-# Телефония: Asterisk → Voice Router
+# Телефония: Asterisk + ARI → Voice Router
 
-Для того, кто поднимает Asterisk. Задача: входящий звонок на софтфон или SIP‑транк попадает в того же голосового агента, что и веб, с идентификацией клиента по номеру звонящего и переводом на оператора. Бэкенд пишется параллельно, проверять можно на мок‑сервере из [/tools/mock-server](../../tools/mock-server).
+Для того, кто поднимает Asterisk. Звонок с софтфона попадает в того же голосового агента, что и веб: агент узнаёт клиента по номеру звонящего и умеет перевести звонок на оператора.
 
-Готовые конфиги: [/contracts/asterisk](../../contracts/asterisk). REST телефонии: раздел `telephony` в [/contracts/openapi.yaml](../../contracts/openapi.yaml).
+**Схема:** управление звонком через ARI, звук через канал External Media в формате AudioSocket по TCP. AMI не нужен.
 
-## Схема
+Готовые конфиги: [/contracts/asterisk](../../contracts/asterisk). `extensions.conf`, `ari.conf`, `http.conf`, `pjsip.conf`.
 
-```text
-софтфон 1001 ──SIP──► Asterisk ── dialplan saqta-inbound, 7575
-                         │ 1. CURL POST /api/telephony/calls (caller, channel)  → UUID (text/plain)
-                         │ 2. AudioSocket(UUID, api:9092)   ◄──── двусторонний звук slin 8 kHz ────► бэкенд
-                         │ 3a. клиент попрощался: бэкенд шлёт hangup (0x00), канал завершается
-                         │ 3b. перевод: бэкенд через AMI делает Setvar SAQTA_SUMMARY + Redirect
-                         │     в saqta-transfer,<queue>,1 → Dial(PJSIP/operator)
-                         │ 4. экстеншен h: CURL POST /api/telephony/calls/UUID/hangup
-```
-
-## Что нужно поднять
-
-1. Asterisk 20 или 22 LTS в Docker с модулями `app_audiosocket`, `func_curl`, `res_pjsip`, `manager`. Проверка: `asterisk -rx "module show like audiosocket"` и `module show like curl`.
-2. Сервис в общем `docker compose` в профиле `telephony`, в одной сети с `api`. Порты наружу 5060/udp и RTP 10000–10100/udp для софтфонов.
-3. Конфиги из `/contracts/asterisk`: `pjsip.conf`, `extensions.conf`, `manager.conf`. Пароли заменить.
-4. Два софтфона: клиент `1001` и оператор `operator`. Подойдут Linphone, Zoiper, MicroSIP.
-5. Опционально SIP‑транк провайдера, входящие маршрутизировать в `saqta-inbound`, `7575`.
-
-## Контракт
-
-### Регистрация звонка
+## Как идёт звонок
 
 ```text
-POST http://api:8000/api/telephony/calls
-Content-Type: application/x-www-form-urlencoded
-caller=+77010000007&dnid=7575&channel=PJSIP/1001-00000001&uniqueid=1727780000.1
-
-200 text/plain
-3f6c1a2e-9b7d-4c1e-8a55-2d0c7e9b1f40
+софтфон ──SIP──► Asterisk ── from-inbound: Answer, Stasis(voice-ai)
+                    │
+                    │  ARI WebSocket  ws://ASTERISK:8088/ari/events?app=voice-ai   ◄── бэкенд подключён как приложение voice-ai
+                    │  1. StasisStart(канал звонящего C, caller.number = номер звонящего)
+                    │  2. бэкенд: answer C, создаёт mixing-бридж B, кладёт в него C
+                    │  3. бэкенд: POST /channels/externalMedia (encapsulation=audiosocket, transport=tcp, format=slin,
+                    │     external_host=BACKEND_IP:9092, data=<UUID>) -> канал E, кладёт E в бридж B
+                    │  4. Asterisk сам подключается к BACKEND_IP:9092 и шлёт UUID, дальше звук slin 8 kHz в обе стороны
+                    │
+                    │  Конец разговора:
+                    │  5a. клиент попрощался: бэкенд DELETE /channels/C (положить трубку)
+                    │  5b. перевод: бэкенд ставит переменную SAQTA_SUMMARY и делает
+                    │      POST /channels/C/continue?context=saqta-transfer&extension=<queue>&priority=1
+                    │      -> диалплан saqta-transfer -> Dial(PJSIP/operator)
+                    │  5c. клиент положил трубку: StasisEnd/ChannelDestroyed -> бэкенд закрывает сессию, удаляет E и B
 ```
 
-`caller` в любом формате, бэкенд нормализует к `+7XXXXXXXXXX` и сразу ищет клиента, поэтому агент здоровается по имени и не спрашивает телефон. `channel` обязателен: по нему бэкенд делает перевод через AMI. Пустой ответ означает, что бэкенд недоступен, диалплан уводит звонок на оператора.
+Всё управление делает бэкенд. От Asterisk нужен только диалплан с `Stasis(voice-ai)`, пользователь ARI и сеть.
 
-### AudioSocket
+## Что нужно от Asterisk
 
-TCP на `api:9092`. Каждое сообщение: 1 байт тип, 2 байта длина big‑endian, данные.
+1. **Asterisk 20+** с модулями `res_ari`, `res_stasis`, `res_http_websocket`, `res_pjsip` и AudioSocket (`res_audiosocket`, `chan_audiosocket`). Проверка:
+   ```bash
+   docker compose exec asterisk asterisk -rx "core show version"
+   docker compose exec asterisk asterisk -rx "module show like audiosocket"
+   docker compose exec asterisk asterisk -rx "ari show apps"
+   ```
+2. **Диалплан.** Контекст `from-inbound` отправляет звонок в `Stasis(voice-ai)`. Это уже так в `infra/asterisk`. Добавить контекст `saqta-transfer` из `contracts/asterisk/extensions.conf`.
+3. **ARI.** Пользователь `voice-ai` с паролем, HTTP на порту 8088. Пароль передаётся нам в `.env` бэкенда.
+4. **Два софтфона.** Клиент `1001` и оператор `operator`, см. `pjsip.conf`. Подойдут Linphone, Zoiper, MicroSIP.
+5. **Демо‑персоны.** Набор `7575NN` звонит от имени клиента `CNN` из mock_backend: `757507` это Сергей, `757504` это Наталья. Так с одного софтфона можно звонить разными клиентами.
+
+## Сеть: звонок с одного ПК на другой
+
+**Рекомендуем:** контейнер Asterisk запускается на демо‑ноутбуке рядом с бэкендом. Софтфон клиента на другом ПК регистрируется на IP ноутбука.
+
+| Что | Куда | Порт |
+|---|---|---|
+| Софтфон → Asterisk | IP ноутбука | 5060/udp, RTP 10000–10100/udp |
+| Бэкенд → ARI | `localhost` или IP Asterisk | 8088/tcp |
+| Asterisk → бэкенд, AudioSocket | IP ноутбука, видимый из контейнера | 9092/tcp |
+
+- Сейчас `infra/asterisk/compose.yaml` публикует ARI только на `127.0.0.1`. Если Asterisk на том же ноутбуке, это подходит. Если на другом ПК, нужен `0.0.0.0:8088:8088` и фаервол, пускающий только IP ноутбука.
+- Адрес бэкенда для AudioSocket должен быть доступен **изнутри контейнера** Asterisk. Проще всего LAN‑IP ноутбука. Либо в compose добавить `extra_hosts: ["host.docker.internal:host-gateway"]` и указать `host.docker.internal`.
+- В `.env` Asterisk указать `ASTERISK_PUBLIC_IP` = LAN‑IP ноутбука, чтобы RTP до софтфона шёл через Docker NAT.
+
+## Настройки бэкенда
+
+```bash
+ARI_URL=http://127.0.0.1:8088        # адрес ARI
+ARI_USER=voice-ai
+ARI_PASSWORD=...                     # из .env Asterisk (ARI_SECRET)
+ARI_APP=voice-ai
+AUDIOSOCKET_PORT=9092                # где бэкенд слушает AudioSocket
+AUDIOSOCKET_HOST=192.168.1.50        # как Asterisk достаёт до бэкенда: LAN-IP ноутбука или host.docker.internal
+```
+
+Бэкенд сам подключается к ARI при старте и переподключается, если Asterisk перезапустили.
+
+## Формат звука
+
+AudioSocket: сообщение = 1 байт тип, 2 байта длина big‑endian, данные.
 
 | Тип | Направление | Данные |
 |---|---|---|
-| `0x01` | Asterisk → сервер, первое сообщение | UUID, 16 байт |
-| `0x10` | в обе стороны | звук slin: PCM16 LE, 8 kHz, моно; 20 мс = 320 байт |
-| `0x03` | Asterisk → сервер | DTMF, 1 байт ASCII |
+| `0x01` | Asterisk → бэкенд, первое сообщение | UUID, 16 байт. Это значение из `data` при создании External Media |
+| `0x10` | в обе стороны | звук slin: PCM16 LE, 8 kHz, моно, 20 мс = 320 байт |
 | `0x00` | в обе стороны | завершение |
-| `0xff` | Asterisk → сервер | ошибка |
+| `0xff` | Asterisk → бэкенд | ошибка |
 
-Сервер отправляет звук кадрами по 20 мс в реальном темпе. Перебивание: сервер просто перестаёт слать кадры. Внутри бэкенд ресемплирует 8 → 16 kHz для распознавания и 24 → 8 kHz для синтеза.
+Бэкенд отдаёт звук кадрами по 20 мс в реальном темпе. Если клиент перебивает, бэкенд просто перестаёт слать кадры.
 
-### Перевод на оператора
+## Если External Media не принимает audiosocket
 
-Не полагаемся на то, что `AudioSocket()` вернёт управление в диалплан: в разных версиях Asterisk закрытие сокета сервером может обрывать канал. Поэтому бэкенд переводит звонок через AMI.
+Поддержку проверяют первым звонком. Если бэкенд в логе пишет ошибку `externalMedia` про `encapsulation`, версия Asterisk её не поддерживает. Запасной путь: `encapsulation=rtp`, `transport=udp`, `format=slin16`, бэкенд принимает RTP на порту 9092/udp. Для этого скажите нам, мы переключим режим одной переменной `EXTERNAL_MEDIA=rtp`.
 
-```text
-Action: Setvar            Channel: PJSIP/1001-00000001   Variable: SAQTA_SUMMARY   Value: <резюме>
-Action: Redirect          Channel: PJSIP/1001-00000001   Context: saqta-transfer   Exten: complaints_team   Priority: 1
-```
+## Чек‑лист
 
-Очереди из кита: `operator_general`, `claims_team`, `medical_assistance_24_7`, `corporate_sales`, `complaints_team`, `security_team`. В демо все ведут на один софтфон `operator`, имя очереди видно в caller name. Полное резюме оператор видит в веб‑экране «Оператор». Пользователь AMI: `voicerouter`, порт 5038, права в `manager.conf`.
-
-Запасной путь в диалплане: после `AudioSocket()` запрос `GET /api/telephony/calls/{uuid}/outcome` возвращает `hangup` или `transfer:<queue>`.
-
-### Завершение
-
-Экстеншен `h` вызывает `POST /api/telephony/calls/{uuid}/hangup` с `cause`. Бэкенд закрывает сессию и пишет итог в панель супервизора.
-
-## Демо‑трюк с персонами
-
-Набор `7575NN` звонит от имени персоны `CNN` из mock_backend: `757507` это Сергей Попов `+77010000007`, `757504` это Наталья Смирнова `+77010000004`. На сцене можно звонить с одного софтфона разными клиентами.
-
-## Проверка без бэкенда
-
-```bash
-.venv/bin/pip install -r tools/mock-server/requirements.txt
-.venv/bin/python tools/mock-server/server.py
-```
-
-Мок на `:8000` принимает регистрацию звонка и отдаёт UUID, на `:9092` работает эхо AudioSocket: вы слышите себя с задержкой около секунды. DTMF `0` помечает исход `transfer:operator_general` и закрывает сокет, `#` закрывает сокет с исходом `hangup`. В логе мока видно регистрацию, UUID, DTMF и завершение.
-
-## Чек‑лист готовности
-
-- [ ] Звонок с `1001` на `7575` регистрируется, в логе бэкенда видны caller и channel
-- [ ] Эхо через мок слышно без искажений в обе стороны
-- [ ] `757507` меняет caller ID на `+77010000007`
-- [ ] AMI Redirect из консоли переводит активный звонок в `saqta-transfer` и звонит оператору
-- [ ] `h` вызывает hangup‑эндпоинт
-- [ ] При выключенном бэкенде звонок уходит на оператора, а не обрывается
+- [ ] `ari show apps` показывает `voice-ai` после старта бэкенда
+- [ ] Звонок с `1001` на любой номер: агент здоровается, в логе бэкенда `StasisStart` и подключение AudioSocket с UUID
+- [ ] `757504` здоровается по имени «Наталья» без вопроса про телефон
+- [ ] Фраза «соедините с оператором»: звонит софтфон `operator`, в caller name видно очередь
+- [ ] Клиент кладёт трубку посреди ответа: сессия на бэкенде закрывается, в Asterisk не остаётся висящих бриджей (`bridge show all`)
 - [ ] Задержка на телефоне замерена секундомером от конца фразы до начала ответа

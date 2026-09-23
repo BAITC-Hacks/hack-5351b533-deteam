@@ -10,7 +10,7 @@
 | `router-output.schema.json` | вывод роутера, strict‑схема для structured outputs `gpt-6-luna` |
 | `evolution.schema.json` | кейсы, прогоны bench, патчи каталога, версии каталога |
 | `openapi.yaml` | REST: сессии, статистика, каталог, эволюция, телефония |
-| `asterisk/` | примеры AudioSocket‑диалплана: `extensions.conf`, `pjsip.conf`, `manager.conf` для Asterisk |
+| `asterisk/` | конфиги Asterisk для схемы ARI + External Media: `extensions.conf`, `ari.conf`, `http.conf`, `pjsip.conf` |
 
 Проверка фикстур против схем:
 

@@ -68,7 +68,7 @@
 | Числа словами | `num2words` | `lang="ru"`, `lang="kz"` | «тридцать восемь тысяч тенге» по правилам кейса |
 | Бэкенд | Python 3.12, FastAPI, asyncio, SQLite | | Один процесс: транспорт, пайплайн, REST, supervisor WS |
 | Фронтенд | React + Vite + TypeScript, AudioWorklet | | Контракт в [docs/frontend](../frontend/README.md) |
-| Телефония | Asterisk 20/22, AudioSocket, func_curl, AMI | | Контракт в [docs/telephony](../telephony/README.md) |
+| Телефония | Asterisk 20+, ARI (Stasis voice-ai), External Media с encapsulation=audiosocket | | Контракт в [docs/telephony](../telephony/README.md) |
 | Инфра | docker compose | `docker compose up` | Требование «запуск одной командой» |
 
 Почему не speech‑to‑speech (`gpt-realtime-2.1`, `gpt-live-1`): выбор сценария там происходит внутри модели, отдельного этапа для трассировки нет, evaluate.py всё равно требует текстовый роутер, а GPT‑Live перефразирует наш текст вместо дословного произнесения (номера полисов, маски email, точные суммы). Оставляем как возможный режим шоу, не как основу.
@@ -169,7 +169,7 @@
 | Канал | Вход | Выход | Где контракт |
 |---|---|---|---|
 | Web | WS, бинарные кадры PCM16 LE 16 kHz mono по 20 мс, JSON‑события текстом | бинарные кадры PCM16 LE 24 kHz, JSON‑события | [docs/frontend](../frontend/README.md), [contracts/ws-events.schema.json](../../contracts/ws-events.schema.json) |
-| Телефон | Asterisk `AudioSocket`, slin 8 kHz, caller ID через HTTP‑регистрацию | slin 8 kHz, перевод на оператора через AMI Redirect, завершение через hangup AudioSocket | [docs/telephony](../telephony/README.md), [contracts/asterisk](../../contracts/asterisk) |
+| Телефон | Asterisk: ARI‑приложение voice-ai, звук через External Media (AudioSocket по TCP), slin 8 kHz, caller ID из StasisStart | slin 8 kHz, перевод через ARI continue в saqta-transfer, завершение через ARI hangup | [docs/telephony](../telephony/README.md), [contracts/asterisk](../../contracts/asterisk) |
 | Текст | `text.input` в том же WS или `POST /api/route` | те же события, `stt = 0` | [contracts/openapi.yaml](../../contracts/openapi.yaml) |
 
 Сессия одна и та же для всех каналов, отличается только транспорт и поле `channel`.
@@ -182,7 +182,7 @@
 docker compose up
   api        FastAPI + пайплайн + supervisor WS + AudioSocket сервер (:8000 HTTP/WS, :9092 AudioSocket)
   web        статика фронта (nginx, :3000)
-  asterisk   опционально, профиль `telephony`
+  asterisk   infra/asterisk (свой compose), ARI :8088, SIP :5060
   mock       опционально, профиль `dev`: воспроизведение fixtures для фронтендера
 ```
 
