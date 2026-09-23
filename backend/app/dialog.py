@@ -87,7 +87,7 @@ async def process_turn(sess, text, *, t0=None, stt_ms=0, emit=None, speak=None, 
         if ack: await say(ack, True)
     tpl = template_for(items, lang)
     source = "template"
-    if not tpl and not ack and parts == []:
+    if not tpl and not ack and parts == [] and (sess._turn_actions or any(i.get("kind") == "preview" for i in items)):
         ack = filler_for(items, sess._turn_actions, lang)
         await say(ack, True)
     if tpl:

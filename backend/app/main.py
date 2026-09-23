@@ -101,7 +101,9 @@ def session(sid: str):
     for e in rec["events"]:
         if e["type"] == "stt.final": tr.append({"turn": e["turn"], "role": "client", "text": e["text"], "lang": e["lang"]})
         if e["type"] == "bot.text.final": tr.append({"turn": e["turn"], "role": "bot", "text": e["text"], "lang": e["lang"]})
-    return {**HUB.summary(sid), "transcript": tr, "traces": HUB.traces(sid), "final_state": s.state()}
+    from .hub import recording_obj
+    return {**HUB.summary(sid), "transcript": tr, "traces": HUB.traces(sid), "final_state": s.state(),
+            "recording": recording_obj(sid, s.channel, rec["ended_at"])}
 
 @app.get("/api/sessions/{sid}/events")
 def session_events(sid: str):

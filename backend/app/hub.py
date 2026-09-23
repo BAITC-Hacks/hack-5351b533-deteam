@@ -74,6 +74,15 @@ def _recording(sid, channel, ended):
     r = recording_for_session(sid)
     return {"recording_status": "available" if r else "pending", "recording_uri": r and r["recording_uri"], "recording_url": r and r["recording_url"]}
 
+def recording_obj(sid, channel, ended):
+    """Объект записи для фронта (frontend SessionRecording): ready | processing | unavailable."""
+    if channel != "phone": return {"status": "unavailable", "url": None}
+    from .telephony import recording_for_session
+    r = recording_for_session(sid)
+    if not r: return {"status": "processing", "url": None, "timebase": "session_start"}
+    return {"status": "ready", "url": r["recording_url"], "mime_type": r.get("content_type") or "audio/wav",
+            "duration_ms": r.get("duration_ms"), "timebase": "session_start", "uri": r.get("recording_uri")}
+
 def _flag(t):
     return t["decision"] in ("clarify", "handoff") or (not t["fast_path"] and t["scenarios"] and t["scenarios"][0]["confidence"] < config.CONF_RUN)
 

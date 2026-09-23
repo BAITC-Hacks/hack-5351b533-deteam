@@ -32,6 +32,21 @@ class Frame:
     errors: dict = field(default_factory=dict)
     options: list | None = None     # предложенные ближайшие слоты (no_availability): «да» = первый из них
 
+def slot_hints(sid, slot):
+    """Подсказки для повторного вопроса: допустимые значения слота и цены, если они есть в базе знаний."""
+    kb = kit.kb(); spec = kit.slots().get(slot, {}); h = {}
+    if sid == "SC07" and slot == "sum_insured":
+        p = kb["products"]["property"]
+        h["allowed_sum_insured_kzt"] = [int(x) for x in p["price_per_year_kzt"]]
+        h["price_per_year_kzt"] = {"apartment": p["price_per_year_kzt"], "house": {k: round(v * p["house_coef"]) for k, v in p["price_per_year_kzt"].items()}}
+        h["explain"] = "sum insured = how much the policy pays out; price per year depends on it"
+    elif sid == "SC08" and slot == "sum_insured":
+        h["allowed_sum_insured_kzt"] = [int(x) for x in kb["products"]["accident"]["price_per_year_kzt"]]
+        h["price_per_year_kzt"] = kb["products"]["accident"]["price_per_year_kzt"]
+    elif spec.get("values"):
+        h["allowed_values"] = spec["values"]
+    return h
+
 class Ctx:
     """Интерфейс для планов сценариев."""
     def __init__(self, sess: "Session", f: Frame):
@@ -330,6 +345,8 @@ class Session:
             if f.asked[st.slot] > 3:
                 st.kind, st.queue, st.facts = "handoff", "operator_general", {"reason": f"could not get {st.slot}"}
                 return self._apply(f, st)
+            if f.asked[st.slot] >= 2:
+                st.facts = {**(st.facts or {}), "repeat": True, "client_last_answer": self.history[-1]["text"] if self.history else None, **slot_hints(f.sid, st.slot)}
         elif st.kind == "preview":
             f.awaiting, f.pending_action, f.pending_inputs = "confirmation", st.action, st.inputs
             self._action(st.action, st.inputs, st.facts or {}, 0, preview=True)
@@ -409,6 +426,8 @@ class Session:
             self.ended = True; return [{"kind": "goodbye"}]
         if dec == "out_of_scope":
             return [{"kind": "out_of_scope", "robot": bool(u.get("robot")), "reprompt": self._reprompt()}]
+        if dec == "clarify" and a and a.awaiting == "slot" and not u.get("clarify_forced"):
+            return self.run([a.sid], u.get("slots", {}))          # переспросить в текущей теме вместо «по какому вопросу звоните»
         if dec == "clarify":
             self.unclear_streak += 1
             return [{"kind": "clarify", "options": u.get("clarify", [])[:2]}]
