@@ -85,7 +85,8 @@ const FLAG_TONE: Record<CallFlag, Tone> = { low_confidence: 'warn', slow: 'warn'
 export function FlagBadges({ flags }: { flags: CallFlag[] }) {
   return (
     <span className="row gap wrap">
-      {flags.map((f) => (
+      {/* смешение языков уже видно по бейджам языка — не дублируем */}
+      {flags.filter((f) => f !== 'mixed_lang').map((f) => (
         <Badge key={f} tone={FLAG_TONE[f]}>
           {FLAG_LABEL[f]}
         </Badge>

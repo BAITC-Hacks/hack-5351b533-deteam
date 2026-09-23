@@ -6,7 +6,9 @@ import { Badge, ConfidenceBadge, DecisionBadge, Empty, LangBadge, RouteBadge } f
 /** Лента диалога. Под каждым ответом робота — краткий итог роутинга. Клик по реплике — её трассировка */
 export function DialogView(props: { turns: Turn[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const end = useRef<HTMLDivElement>(null)
-  useEffect(() => end.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), [props.turns.length])
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [props.turns.length])
 
   if (!props.turns.length) {
     return (

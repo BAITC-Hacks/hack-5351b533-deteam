@@ -80,7 +80,7 @@ export function SupervisorPage() {
                     {time(c.session.started_at)}
                     <div className="muted small">{duration(c.session.started_at, c.last_activity_at)}</div>
                   </td>
-                  <td>{c.session.client?.name ?? <span className="muted">аноним</span>}</td>
+                  <td className="nowrap">{c.session.client?.name ?? <span className="muted">аноним</span>}</td>
                   <td>
                     <ScenarioPath path={c.scenario_path} />
                   </td>
