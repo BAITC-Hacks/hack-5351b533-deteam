@@ -1,0 +1,40 @@
+; Optional provider trunk. Copy to pjsip_trunk.conf and replace placeholders.
+; Many providers require their own URI, transport and authentication settings.
+; IP-authenticated inbound calls may omit the registration/auth sections.
+
+;[provider-auth]
+;type=auth
+;auth_type=userpass
+;username=YOUR_USERNAME
+;password=YOUR_PASSWORD
+
+;[provider-registration]
+;type=registration
+;transport=transport-udp
+;outbound_auth=provider-auth
+;server_uri=sip:YOUR_PROVIDER_HOST
+;client_uri=sip:YOUR_USERNAME@YOUR_PROVIDER_HOST
+;contact_user=voice-ai
+;retry_interval=60
+
+;[provider-aor]
+;type=aor
+;contact=sip:YOUR_PROVIDER_HOST
+
+;[provider-endpoint]
+;type=endpoint
+;transport=transport-udp
+;context=from-inbound
+;disallow=all
+;allow=ulaw,alaw
+;aors=provider-aor
+;outbound_auth=provider-auth
+;direct_media=no
+;rtp_symmetric=yes
+;force_rport=yes
+;rewrite_contact=yes
+
+;[provider-identify]
+;type=identify
+;endpoint=provider-endpoint
+;match=YOUR_PROVIDER_IP
