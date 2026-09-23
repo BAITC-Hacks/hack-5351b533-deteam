@@ -7,7 +7,7 @@ WS /ws/voice?fixture=web-d03 : на каждую реплику клиента (
 голос: 0.6 с речи и затем 0.5 с тишины) отдаёт следующий ход из fixture с исходными таймингами.
 Аудио бота заменено тоном 440 Гц нужной длительности.
 """
-import asyncio, json, math, struct, uuid, time
+import asyncio, json, math, os, struct, uuid, time
 from urllib.parse import parse_qsl
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -158,7 +158,7 @@ async def ws_voice(ws: WebSocket, fixture: str = "web-d03"):
 
 # --- AudioSocket echo: проверка телефонии без бэкенда ---
 async def audiosocket(reader, writer):
-    """Эхо с задержкой 1 с. DTMF 0 → перевод (outcome transfer:operator_general), # → hangup."""
+    """Эхо с задержкой 1 с. В ARI-режиме DTMF обрабатывает ARI-контроллер."""
     uid = None; buf = []
     try:
         while True:
@@ -170,6 +170,8 @@ async def audiosocket(reader, writer):
                 if len(buf) > 50: writer.write(b"\x10" + struct.pack(">H", len(buf[0])) + buf.pop(0)); await writer.drain()
             elif kind == 0x03:
                 d = p.decode(); print("DTMF", d)
+                if os.environ.get("MOCK_TELEPHONY_MODE") == "ari":
+                    continue
                 if d in "0#":
                     if uid in calls and d == "0": calls[uid]["outcome"] = "transfer:operator_general"
                     writer.write(b"\x00\x00\x00"); await writer.drain(); break

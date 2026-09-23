@@ -34,3 +34,5 @@ cd frontend && npm ci && npm run dev                 # фронт
 cd infra/asterisk && docker compose up -d --build    # Asterisk
 python data/evaluate.py predictions.json data/dev_utterances.json
 ```
+
+Для сквозной проверки телефонии на одном компьютере используйте `infra/asterisk/compose.smoke.yaml`: он добавляет к Asterisk мок AudioSocket и временный ARI-контроллер. Настройка `.env`, SIP-аккаунтов и порядок проверки звука описаны в [infra/asterisk/README.md](infra/asterisk/README.md).

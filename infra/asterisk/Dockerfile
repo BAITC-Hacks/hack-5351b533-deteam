@@ -11,4 +11,4 @@ RUN chmod +x /usr/local/bin/asterisk-entrypoint
 
 EXPOSE 5060/udp 5038/tcp 8088/tcp 10000-10100/udp
 
-ENTRYPOINT ["/usr/local/bin/asterisk-entrypoint"]
+ENTRYPOINT ["python3", "/usr/local/bin/asterisk-entrypoint"]

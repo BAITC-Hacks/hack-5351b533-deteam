@@ -1,0 +1,42 @@
+services:
+  mock:
+    image: voice-router-smoke:local
+    build:
+      context: ../..
+      dockerfile: infra/asterisk/Dockerfile.smoke
+    command: ["python", "-u", "/app/tools/mock-server/server.py"]
+    environment:
+      MOCK_TELEPHONY_MODE: ari
+    ports:
+      - "127.0.0.1:8000:8000/tcp"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket, urllib.request; socket.create_connection(('127.0.0.1', 9092), 2).close(); urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).close()"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  ari-smoke:
+    image: voice-router-smoke:local
+    build:
+      context: ../..
+      dockerfile: infra/asterisk/Dockerfile.smoke
+    command: ["python", "-u", "/app/infra/asterisk/scripts/ari_smoke.py"]
+    environment:
+      ARI_URL: http://asterisk:8088
+      ARI_USER: voice-ai
+      ARI_PASSWORD: ${ARI_SECRET:?Set ARI_SECRET in infra/asterisk/.env}
+      ARI_APP: voice-ai
+      AUDIOSOCKET_HOST: mock
+      AUDIOSOCKET_PORT: "9092"
+    depends_on:
+      asterisk:
+        condition: service_healthy
+      mock:
+        condition: service_healthy
+    restart: unless-stopped

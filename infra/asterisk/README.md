@@ -1,68 +1,75 @@
-# Asterisk для входящего голосового ИИ
+# Asterisk для локального голосового агента
 
-Стек поднимает Asterisk с SIP/PJSIP, AMI и ARI. Входящие вызовы от разрешённого локального SIP-сервера попадают в приложение ARI `voice-ai`. AMI отдаёт события и позволяет управлять вызовами. Для будущей передачи аудио ИИ используйте ARI External Media (RTP) и сервис обработки речи.
+Этот каталог поднимает Asterisk с SIP, ARI и AudioSocket по [телефонному контракту](../../docs/telephony/README.md). Звонок попадает в `Stasis(voice-ai)`; ARI-приложение управляет каналами, а звук передаётся ему через External Media (`tcp/audiosocket`, `slin`, 8 кГц). AMI оставлен на `127.0.0.1:5038` для совместимости и диагностики, но основной маршрут его не использует.
 
-## Запуск в Windows PowerShell
+## Запуск на одном компьютере (Windows)
 
-1. Запустите Docker Desktop в режиме Linux containers.
-2. Создайте пароли и локальный конфиг транка:
-
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1
-   ```
-
-3. Запустите Asterisk:
-
-   ```powershell
-   docker compose up -d --build
-   docker compose ps
-   docker compose logs -f asterisk
-   ```
-
-`setup.ps1` не заменяет уже созданные `.env` и `config/pjsip_trunk.conf`. Эти файлы не попадают в Git. В Linux/macOS скопируйте `.env.example` в `.env`, замените три значения `CHANGE_ME` стойкими паролями, затем скопируйте `config/pjsip_trunk.conf.example` в `config/pjsip_trunk.conf`.
-
-Для другого локального SIP-сервера укажите **его точный IPv4-адрес** в `.env` как `LOCAL_SIP_PEER_IP`, а затем выполните `docker compose up -d --force-recreate`. На том сервере направьте входящие вызовы на IP Docker-хоста, UDP 5060. Asterisk узнаёт этот транк по IP без SIP-регистрации. Ограничьте доступ к UDP 5060 на сетевом экране адресом этого сервера. Если он работает на том же хосте, в `LOCAL_SIP_PEER_IP` нужен IP, который Asterisk видит внутри контейнера; его можно выяснить по SIP-логам.
-
-## Подключение
-
-| Интерфейс | Адрес с хоста | Учётные данные |
-| --- | --- | --- |
-| SIP UDP | `localhost:5060` | `test-inbound` / `SIP_TEST_SECRET` |
-| AMI TCP | `127.0.0.1:5038` | `voice-ai` / `AMI_SECRET` |
-| ARI HTTP и WebSocket | `http://127.0.0.1:8088/ari` | `voice-ai` / `ARI_SECRET` |
-| RTP | UDP 10000–10100 | — |
-
-AMI и ARI публикуются только на loopback хоста. Для ИИ-сервиса в том же Compose-проекте используйте `asterisk:5038` и `http://asterisk:8088/ari` внутри Docker-сети. Не публикуйте эти интерфейсы напрямую в интернет. Для удалённого сервиса используйте VPN или другой защищённый канал.
-
-Быстрая проверка:
+Из каталога `infra/asterisk`:
 
 ```powershell
-docker compose exec asterisk asterisk -rx 'manager show users'
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+```
+
+Скрипт создаёт `.env` с паролями и пустой `config/pjsip_trunk.conf`; существующие пароли сохраняет. В `.env` задайте `ASTERISK_PUBLIC_IP` равным IPv4-адресу Windows-интерфейса, через который MicroSIP обращается к Asterisk. Даже когда оба приложения на одном ПК, этот адрес нужен для RTP через Docker Desktop. `ASTERISK_LOCAL_NET=auto` вычисляет IPv4 контейнера с маской `/32`, чтобы SIP от Docker gateway получил правильный адрес в SDP. При смене сети обновите `ASTERISK_PUBLIC_IP` и пересоздайте контейнер.
+
+Для запуска только Asterisk:
+
+```powershell
+docker compose up -d --build
+docker compose ps
+```
+
+Пока ARI-приложение не подключено, вызовы на агентские номера после `Stasis(voice-ai)` завершаются. Номер `9999` всегда запускает `Echo()` и проверяет SIP/RTP без бэкенда.
+
+## Сквозной тест без готового бэкенда
+
+Дополнительный Compose-файл запускает мок AudioSocket и временный ARI-контроллер. Они работают на этом же ПК в Docker-сети. Контроллер создаёт mixing bridge, добавляет звонящего и External Media канал, закрывает ресурсы при отбое и переводит по DTMF `0` на оператора. Мок возвращает голос звонящего с задержкой около секунды.
+
+```powershell
+docker compose -f compose.yaml -f compose.smoke.yaml up -d --build
+docker compose -f compose.yaml -f compose.smoke.yaml ps
+docker compose -f compose.yaml -f compose.smoke.yaml logs -f ari-smoke mock
+```
+
+Для проверки конфигурации:
+
+```powershell
 docker compose exec asterisk asterisk -rx 'pjsip show endpoints'
 docker compose exec asterisk asterisk -rx 'dialplan show from-inbound'
+docker compose exec asterisk asterisk -rx 'dialplan show saqta-transfer'
+docker compose exec asterisk asterisk -rx 'ari show apps'
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-ami.ps1
 ```
 
-## Входящий звонок
+`ari show apps` должен показывать `voice-ai`, когда запущен `ari-smoke` или настоящий бэкенд. Одновременно подключать два ARI-контроллера с этим именем приложения нельзя: перед запуском настоящего бэкенда остановите smoke-сервисы.
 
-Для локального теста зарегистрируйте программный SIP-телефон на адресе Docker-хоста, порт 5060 UDP, пользователь `test-inbound`, пароль из `.env`. Позвоните на любой номер, например `1000`. Вызов перейдёт в `Stasis(voice-ai)`. ARI-приложение должно заранее открыть WebSocket:
+## Софтфоны на том же ПК
+
+| Роль | SIP-пользователь | Пароль из `.env` | Что набрать |
+| --- | --- | --- | --- |
+| Клиент | `1001` | `SIP_TEST_SECRET` | `9999` для RTP, затем `757504` или любой номер для ARI |
+| Оператор | `operator` | `SIP_OPERATOR_SECRET` | Принимает перевод по DTMF `0` |
+
+В настройках обоих клиентов: SIP-сервер `<ASTERISK_PUBLIC_IP>:5060`, транспорт UDP, домен `<ASTERISK_PUBLIC_IP>`, SIP-прокси пустой. Если MicroSIP запущен на Windows-хосте с Docker, задайте ему локальный SIP-порт `5062` (у второго клиента другой, например `5064`): порт `5060` уже занят публикацией Docker. Существующий аккаунт `test-inbound` продолжает работать с `SIP_TEST_SECRET`.
+
+1. Позвоните с `1001` на `9999`. Вы должны слышать свой голос. Если тишина, проверьте устройство вывода, `ASTERISK_PUBLIC_IP`, SIP-регистрацию и UDP 10000–10100.
+2. Позвоните на `757504`: в Asterisk caller ID станет `+77010000004`; `757507` даёт `+77010000007`. В логе `ari-smoke` должны появиться `StasisStart`/bridge, в логе `mock` — AudioSocket UUID. После произнесённой фразы придёт эхо.
+3. Во время звонка нажмите DTMF `0`: должен зазвонить `operator`. DTMF `#` завершает тестовый звонок.
+4. Положите трубку и проверьте `docker compose exec asterisk asterisk -rx 'bridge show all'`: тестовый bridge должен исчезнуть.
+
+## Подключение настоящего бэкенда
+
+Если бэкенд запущен на Windows-хосте, его настройки:
 
 ```text
-ws://127.0.0.1:8088/ari/events?app=voice-ai&api_key=voice-ai:ARI_SECRET
+ARI_URL=http://127.0.0.1:8088
+ARI_USER=voice-ai
+ARI_PASSWORD=<значение ARI_SECRET из infra/asterisk/.env>
+ARI_APP=voice-ai
+AUDIOSOCKET_HOST=host.docker.internal
+AUDIOSOCKET_PORT=9092
 ```
 
-Если приложение ARI не подключено, Asterisk не сможет передать ему вызов и завершит его. Это ожидаемо: голосовой агент в данный репозиторий пока не входит.
+Если бэкенд запускается контейнером в той же Compose-сети, используйте `ARI_URL=http://asterisk:8088`, а в `AUDIOSOCKET_HOST` — имя сервиса бэкенда. Asterisk подключается **к** бэкенду по TCP 9092; бэкенд должен слушать `0.0.0.0:9092` внутри своего контейнера. ARI и AMI опубликованы на хосте только на loopback. Не передавайте `.env` или пароли в Git.
 
-Для SIP-провайдера есть необязательный образец в `config/pjsip_trunk.conf`. После правки выполните `docker compose restart asterisk` и проверьте `pjsip show registrations` и `pjsip show endpoints`. Когда RTP пересекает Docker NAT, укажите достижимый для звонящего адрес Docker-хоста в `.env` как `ASTERISK_PUBLIC_IP`, затем пересоздайте контейнер командой `docker compose up -d --force-recreate`. Для локальной сети это LAN-адрес хоста. При изменении сети Docker при необходимости поправьте `ASTERISK_LOCAL_NET`.
-
-## Передача аудио агенту
-
-ARI-приложение получает событие `StasisStart` для входящего канала. Оно создаёт mixing bridge, добавляет в него канал звонящего, затем создаёт External Media канал и добавляет его в тот же bridge. Например, запрос для RTP с кодеком `ulaw`:
-
-```text
-POST /ari/channels/externalMedia?app=voice-ai&external_host=agent:60000&format=ulaw
-```
-
-Сервис `agent` принимает RTP и отправляет RTP обратно на адрес и порт, указанные в переменных `UNICASTRTP_LOCAL_ADDRESS` и `UNICASTRTP_LOCAL_PORT` внешнего канала. Для распознавания и синтеза речи нужен отдельный сервис. AMI можно параллельно использовать для событий, перевода и завершения звонка. Пароли из `.env` не следует передавать в URL, доступный посторонним; URL выше служит лишь схемой подключения.
-
-Документация Asterisk: [AMI](https://docs.asterisk.org/Configuration/Interfaces/Asterisk-Manager-Interface-AMI/The-Asterisk-Manager-TCP-IP-API/), [ARI](https://docs.asterisk.org/Configuration/Interfaces/Asterisk-REST-Interface-ARI/Getting-Started-with-ARI/), [External Media](https://docs.asterisk.org/Development/Reference-Information/Asterisk-Framework-and-API-Examples/External-Media-and-ARI/), [PJSIP trunk](https://docs.asterisk.org/Configuration/Channel-Drivers/SIP/Configuring-res_pjsip/res_pjsip-Configuration-Examples/).
+Порты Asterisk: SIP 5060/udp, RTP 10000–10100/udp, ARI 127.0.0.1:8088/tcp, AMI 127.0.0.1:5038/tcp. Для внешнего локального SIP-сервера можно указать `LOCAL_SIP_PEER_IP` в `.env`; подробности [в исходной схеме](../../docs/telephony/README.md).
