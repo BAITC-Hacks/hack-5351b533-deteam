@@ -1,0 +1,85 @@
+[
+  {
+    "patch_id": "PT-0003",
+    "status": "ready",
+    "case_ids": [
+      "CASE-0001"
+    ],
+    "base_version": "v3-9f2c",
+    "proposal": {
+      "ops": [
+        {
+          "op": "add",
+          "scenario_id": "SC17",
+          "field": "not_this_if",
+          "value": {
+            "condition": "Client disagrees with the approved amount or the decision",
+            "use_instead": "SC19"
+          }
+        },
+        {
+          "op": "append",
+          "scenario_id": "SC19",
+          "field": "examples.ru",
+          "value": "Одобрили, но сумма меньше, чем насчитали в сервисе"
+        }
+      ],
+      "rationale": "Несогласие с одобренной суммой ушло в статус: у SC17 не было правила границы с SC19."
+    },
+    "diff": [
+      {
+        "scenario_id": "SC17",
+        "field": "not_this_if",
+        "before": [
+          {
+            "condition": "Client disagrees with the decision",
+            "use_instead": "SC19"
+          }
+        ],
+        "after": [
+          {
+            "condition": "Client disagrees with the decision",
+            "use_instead": "SC19"
+          },
+          {
+            "condition": "Client disagrees with the approved amount or the decision",
+            "use_instead": "SC19"
+          }
+        ]
+      },
+      {
+        "scenario_id": "SC19",
+        "field": "examples.ru",
+        "before": [
+          "..."
+        ],
+        "after": [
+          "...",
+          "Одобрили, но сумма меньше, чем насчитали в сервисе"
+        ]
+      }
+    ],
+    "regression": {
+      "before": {
+        "run_id": "BR-0007",
+        "primary_acc": 0.935,
+        "full_match": 0.907
+      },
+      "after": {
+        "run_id": "BR-0008",
+        "primary_acc": 0.944,
+        "full_match": 0.916
+      },
+      "fixed": [
+        "CASE-0001"
+      ],
+      "broken": []
+    },
+    "validator_log": [
+      "example similarity to case text 0.52 < 0.85: ok",
+      "use_instead SC19 exists: ok"
+    ],
+    "applied_version": null,
+    "created_at": "2026-10-01T12:04:20Z"
+  }
+]

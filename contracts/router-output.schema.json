@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hackalem.local/contracts/router-output.schema.json",
+  "title": "RouterOutput",
+  "description": "Ответ gpt-6-luna в режиме structured outputs strict. Все поля required, additionalProperties false. Порядок полей важен для стриминга. Слоты массивом пар, потому что strict не допускает свободных map.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "language",
+    "is_continuation",
+    "confirmation",
+    "scenarios",
+    "alternatives",
+    "slots",
+    "urgency",
+    "emotion"
+  ],
+  "properties": {
+    "language": {
+      "type": "string",
+      "enum": [
+        "ru",
+        "kk",
+        "mixed"
+      ]
+    },
+    "is_continuation": {
+      "type": "boolean",
+      "description": "реплика отвечает на последний вопрос бота в активном сценарии"
+    },
+    "confirmation": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "yes",
+        "no",
+        null
+      ],
+      "description": "только при pending_confirmation"
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario_id",
+          "confidence",
+          "segment",
+          "reason",
+          "boundary_rule"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "enum": [
+              "SC01",
+              "SC02",
+              "SC03",
+              "SC04",
+              "SC05",
+              "SC06",
+              "SC07",
+              "SC08",
+              "SC09",
+              "SC10",
+              "SC11",
+              "SC12",
+              "SC13",
+              "SC14",
+              "SC15",
+              "SC16",
+              "SC17",
+              "SC18",
+              "SC19",
+              "SC20",
+              "SC21",
+              "SC22",
+              "SC23",
+              "SC24",
+              "SC25",
+              "SC26",
+              "SC27",
+              "SC28",
+              "SC29",
+              "SC30",
+              "SC31",
+              "SC32",
+              "SC33",
+              "SC34",
+              "SC35",
+              "SC36",
+              "SC37",
+              "SC38",
+              "SC39",
+              "SC40",
+              "SYS_OUT_OF_SCOPE",
+              "SYS_UNCLEAR",
+              "SYS_GOODBYE"
+            ]
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "segment": {
+            "type": "string",
+            "description": "часть реплики, относящаяся к сценарию"
+          },
+          "reason": {
+            "type": "string",
+            "description": "до 12 слов"
+          },
+          "boundary_rule": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "какое правило not_this_if применено"
+          }
+        }
+      }
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenario_id",
+          "confidence"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "enum": [
+              "SC01",
+              "SC02",
+              "SC03",
+              "SC04",
+              "SC05",
+              "SC06",
+              "SC07",
+              "SC08",
+              "SC09",
+              "SC10",
+              "SC11",
+              "SC12",
+              "SC13",
+              "SC14",
+              "SC15",
+              "SC16",
+              "SC17",
+              "SC18",
+              "SC19",
+              "SC20",
+              "SC21",
+              "SC22",
+              "SC23",
+              "SC24",
+              "SC25",
+              "SC26",
+              "SC27",
+              "SC28",
+              "SC29",
+              "SC30",
+              "SC31",
+              "SC32",
+              "SC33",
+              "SC34",
+              "SC35",
+              "SC36",
+              "SC37",
+              "SC38",
+              "SC39",
+              "SC40",
+              "SYS_OUT_OF_SCOPE",
+              "SYS_UNCLEAR",
+              "SYS_GOODBYE"
+            ]
+          },
+          "confidence": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "iin",
+              "policy_number",
+              "claim_number",
+              "vehicle_plate",
+              "culprit_vehicle_plate",
+              "vehicle_type",
+              "region",
+              "drivers_iin",
+              "new_driver_iin",
+              "car_value",
+              "car_year",
+              "franchise",
+              "product_type",
+              "trip_country",
+              "trip_start",
+              "trip_end",
+              "travelers_count",
+              "traveler_max_age",
+              "property_type",
+              "property_address",
+              "sum_insured",
+              "incident_date",
+              "incident_description",
+              "injured",
+              "location",
+              "city",
+              "email",
+              "contact_field",
+              "new_value",
+              "payment_date",
+              "payment_amount",
+              "callback_time",
+              "doctor_specialty",
+              "service_name",
+              "preferred_date",
+              "company_name",
+              "employees_count",
+              "cancel_reason",
+              "complaint_text",
+              "fraud_details",
+              "document_type",
+              "topic"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "description": "нормализованное значение; списки через запятую; числа цифрами"
+          }
+        }
+      }
+    },
+    "urgency": {
+      "type": "string",
+      "enum": [
+        "normal",
+        "high",
+        "urgent"
+      ]
+    },
+    "emotion": {
+      "type": "string",
+      "enum": [
+        "neutral",
+        "upset",
+        "anxious",
+        "happy"
+      ]
+    }
+  }
+}

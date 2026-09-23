@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hackalem.local/contracts/dialog-state.schema.json",
+  "title": "DialogState",
+  "type": "object",
+  "required": [
+    "session_id",
+    "channel",
+    "language",
+    "client",
+    "active",
+    "stack",
+    "slots",
+    "pending_confirmation",
+    "unclear_streak",
+    "completed"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "web",
+        "phone",
+        "text"
+      ]
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "ru",
+        "kk"
+      ]
+    },
+    "client": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "client_id",
+        "full_name",
+        "identified_by"
+      ],
+      "properties": {
+        "client_id": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "identified_by": {
+          "type": "string",
+          "enum": [
+            "caller_id",
+            "phone",
+            "iin",
+            "policy",
+            "claim"
+          ]
+        }
+      }
+    },
+    "active": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "scenario_id",
+        "step"
+      ],
+      "properties": {
+        "scenario_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "step": {
+          "type": "string",
+          "enum": [
+            "identify",
+            "collect_slots",
+            "run_actions",
+            "await_confirmation",
+            "closing",
+            "done"
+          ]
+        },
+        "expected_slot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "missing_slots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "stack": {
+      "type": "array",
+      "description": "отложенные сценарии, верх стека первым",
+      "items": {
+        "type": "object",
+        "required": [
+          "scenario_id",
+          "reason"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "topic_switch",
+              "multi_intent",
+              "deferred_by_client"
+            ]
+          },
+          "slots": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "slots": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "pending_confirmation": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "action",
+        "inputs"
+      ],
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object"
+        },
+        "spoken_summary": {
+          "type": "string"
+        }
+      }
+    },
+    "unclear_streak": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "completed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "handoff": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "queue": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

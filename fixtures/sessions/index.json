@@ -1,0 +1,31 @@
+[
+  {
+    "session_id": "web-d03",
+    "title": "Статус КАСКО → продление → возврат к заявлению",
+    "tags": [
+      "topic_switch",
+      "stack",
+      "tools",
+      "speculative"
+    ]
+  },
+  {
+    "session_id": "web-d04",
+    "title": "ДМС, смешанная речь kk/ru, caller ID, preview → подтверждение",
+    "tags": [
+      "mixed",
+      "confirmation",
+      "multi_intent"
+    ]
+  },
+  {
+    "session_id": "phone-p01",
+    "title": "Телефон: неясный запрос → жалоба → перевод на оператора",
+    "tags": [
+      "phone",
+      "clarify",
+      "handoff",
+      "emotion"
+    ]
+  }
+]

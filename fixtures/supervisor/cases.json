@@ -1,0 +1,56 @@
+[
+  {
+    "case_id": "CASE-0001",
+    "source": "supervisor",
+    "text": "Выплату одобрили, но сумма какая-то маленькая, я не согласен",
+    "lang": "ru",
+    "context": {
+      "client": {
+        "client_id": "C005"
+      }
+    },
+    "expected": [
+      "SC19"
+    ],
+    "observed": [
+      "SC17"
+    ],
+    "session_id": "web-7f3a",
+    "turn": 2,
+    "created_at": "2026-10-01T12:03:11Z"
+  },
+  {
+    "case_id": "CASE-0002",
+    "source": "synthetic",
+    "text": "Карточка ДМС в приложении не открывается, а мне к врачу завтра",
+    "lang": "ru",
+    "context": {},
+    "expected": [
+      "SC24",
+      "SC21"
+    ],
+    "observed": [
+      "SC34"
+    ],
+    "session_id": null,
+    "turn": null,
+    "created_at": "2026-10-01T11:50:00Z"
+  },
+  {
+    "case_id": "CASE-0003",
+    "source": "supervisor",
+    "text": "Ақша түсті, бірақ полис жоқ",
+    "lang": "kk",
+    "context": {},
+    "expected": [
+      "SC30"
+    ],
+    "observed": [
+      "SC30"
+    ],
+    "session_id": "web-11aa",
+    "turn": 1,
+    "note": "починено в v2",
+    "created_at": "2026-10-01T10:20:00Z"
+  }
+]

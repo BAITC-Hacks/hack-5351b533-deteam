@@ -1,0 +1,1246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hackalem.local/contracts/ws-events.schema.json",
+  "title": "Voice Router WebSocket events",
+  "description": "Текстовые JSON-кадры WebSocket /ws/voice (клиент<->сервер) и /ws/supervisor (сервер->панель). Бинарные кадры это PCM16 LE mono: клиент->сервер 16 kHz по 20 мс (640 байт), сервер->клиент 24 kHz произвольными чанками. Каждое событие несёт общий конверт: type, t (мс от старта сессии), session_id, turn (номер реплики клиента, null вне хода).",
+  "$defs": {
+    "envelope": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "t": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "мс от старта сессии (серверные часы)"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "turn": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "номер реплики клиента; 0 = приветствие бота; null вне хода"
+        }
+      },
+      "required": [
+        "type",
+        "t",
+        "session_id"
+      ]
+    },
+    "scenario_ref": {
+      "type": "object",
+      "properties": {
+        "scenario_id": {
+          "type": "string",
+          "pattern": "^(SC\\d{2}|SYS_OUT_OF_SCOPE|SYS_UNCLEAR|SYS_GOODBYE)$"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "scenario_id",
+        "confidence"
+      ]
+    },
+    "lang": {
+      "type": "string",
+      "enum": [
+        "ru",
+        "kk",
+        "mixed"
+      ]
+    },
+    "response_lang": {
+      "type": "string",
+      "enum": [
+        "ru",
+        "kk"
+      ]
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "web",
+        "phone",
+        "text"
+      ]
+    },
+    "queue": {
+      "type": "string",
+      "enum": [
+        "operator_general",
+        "claims_team",
+        "medical_assistance_24_7",
+        "corporate_sales",
+        "complaints_team",
+        "security_team"
+      ]
+    },
+    "action_error_body": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "not_found",
+            "invalid_input",
+            "policy_inactive",
+            "not_eligible",
+            "not_covered",
+            "no_availability",
+            "already_done",
+            "service_unavailable"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "client.session.start": {
+      "description": "Первый кадр клиента. session_id можно не знать: сервер выдаст его в session.ready. Для web session_id = '' допустим.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "session.start"
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "caller_phone": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\+7\\d{10}$",
+          "description": "Имитация caller ID в вебе; на телефоне приходит от Asterisk"
+        },
+        "lang_hint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "ru",
+            "kk",
+            null
+          ]
+        },
+        "client_meta": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "type",
+        "channel"
+      ]
+    },
+    "client.text.input": {
+      "description": "Текстовый канал: реплика клиента без аудио. Сервер обрабатывает как stt.final со stt=0.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "text.input"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ]
+    },
+    "client.playback.started": {
+      "description": "Клиент реально начал воспроизводить первый аудио-чанк хода. Для сверки total с секундомером жюри.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "playback.started"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "t_client_ms": {
+          "type": "integer",
+          "description": "мс от старта сессии по часам клиента"
+        }
+      },
+      "required": [
+        "type",
+        "turn"
+      ]
+    },
+    "client.playback.finished": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "playback.finished"
+        },
+        "turn": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "turn"
+      ]
+    },
+    "client.control.interrupt": {
+      "description": "Пользователь нажал «стоп» во время речи бота. Эквивалент перебивания голосом.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "control.interrupt"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "client.control.mute": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "control.mute"
+        },
+        "muted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "muted"
+      ]
+    },
+    "client.session.end": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "session.end"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "server.session.ready": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "session.ready"
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "audio_in": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "const": "pcm_s16le"
+            },
+            "sample_rate": {
+              "const": 16000
+            },
+            "channels": {
+              "const": 1
+            },
+            "frame_ms": {
+              "const": 20
+            }
+          },
+          "required": [
+            "format",
+            "sample_rate",
+            "channels",
+            "frame_ms"
+          ]
+        },
+        "audio_out": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "const": "pcm_s16le"
+            },
+            "sample_rate": {
+              "type": "integer",
+              "enum": [
+                24000,
+                8000
+              ]
+            },
+            "channels": {
+              "const": 1
+            }
+          },
+          "required": [
+            "format",
+            "sample_rate",
+            "channels"
+          ]
+        },
+        "catalog_version": {
+          "type": "string"
+        },
+        "frozen": {
+          "type": "boolean"
+        },
+        "language": {
+          "$ref": "#/$defs/response_lang"
+        },
+        "client": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "client_id": {
+              "type": "string"
+            },
+            "full_name": {
+              "type": "string"
+            },
+            "identified_by": {
+              "type": "string",
+              "enum": [
+                "caller_id",
+                "phone",
+                "iin",
+                "policy",
+                "claim"
+              ]
+            }
+          },
+          "required": [
+            "client_id",
+            "full_name",
+            "identified_by"
+          ]
+        },
+        "greeting": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Текст приветствия, если бот говорит первым"
+        }
+      },
+      "required": [
+        "type",
+        "channel",
+        "audio_in",
+        "audio_out",
+        "catalog_version",
+        "frozen",
+        "language"
+      ]
+    },
+    "server.vad.speech_start": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "vad.speech_start"
+        },
+        "turn": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "turn"
+      ]
+    },
+    "server.vad.speech_end": {
+      "description": "Точка t0 замера задержки хода.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "vad.speech_end"
+        },
+        "turn": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "turn"
+      ]
+    },
+    "server.stt.partial": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "stt.partial"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "text"
+      ]
+    },
+    "server.stt.final": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "stt.final"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "lang": {
+          "$ref": "#/$defs/lang"
+        },
+        "stt_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "text",
+        "lang"
+      ]
+    },
+    "server.router.hypothesis": {
+      "description": "Живая гипотеза роутера по партиалу транскрипта. Может приходить несколько раз за ход. Для панели «робот думает, пока вы говорите».",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "router.hypothesis"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "partial_text": {
+          "type": "string"
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scenario_ref"
+          }
+        },
+        "language": {
+          "$ref": "#/$defs/lang"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "partial_text",
+        "scenarios"
+      ]
+    },
+    "server.turn.trace": {
+      "description": "Трассировка хода в формате README кейса плюс наши поля. Схема объекта trace в trace.schema.json.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "turn.trace"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "trace": {
+          "$ref": "trace.schema.json"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "trace"
+      ]
+    },
+    "server.dialog.state": {
+      "description": "Снимок состояния диалога после обработки хода. Схема в dialog-state.schema.json.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "dialog.state"
+        },
+        "state": {
+          "$ref": "dialog-state.schema.json"
+        }
+      },
+      "required": [
+        "type",
+        "state"
+      ]
+    },
+    "server.action.preview": {
+      "description": "Необратимое действие показано клиенту для подтверждения, ещё не выполнено.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "action.preview"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "action": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "irreversible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "action",
+        "inputs"
+      ]
+    },
+    "server.action.executed": {
+      "description": "Действие выполнено (или вернуло ошибку в формате actions.json).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "action.executed"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "action": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "result": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/action_error_body"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "action",
+        "inputs"
+      ]
+    },
+    "server.bot.text.delta": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "bot.text.delta"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "delta": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "delta"
+      ]
+    },
+    "server.bot.text.final": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "bot.text.final"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "lang": {
+          "$ref": "#/$defs/response_lang"
+        },
+        "template": {
+          "type": "boolean",
+          "description": "true если ответ шаблонный, без вызова LLM"
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "text",
+        "lang"
+      ]
+    },
+    "server.tts.start": {
+      "description": "Сразу после этого события пойдут бинарные аудио-кадры хода.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "tts.start"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "sample_rate": {
+          "type": "integer"
+        },
+        "cached": {
+          "type": "boolean",
+          "description": "аудио из кэша предсинтеза"
+        }
+      },
+      "required": [
+        "type",
+        "turn"
+      ]
+    },
+    "server.tts.end": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "tts.end"
+        },
+        "turn": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "turn"
+      ]
+    },
+    "server.tts.interrupt": {
+      "description": "Клиент перебил бота. Немедленно сбросить очередь воспроизведения.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "tts.interrupt"
+        },
+        "turn": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "turn"
+      ]
+    },
+    "server.handoff": {
+      "description": "Перевод на оператора с резюме контекста. Для телефона это же уходит в outcome звонка.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "handoff"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "queue": {
+          "$ref": "#/$defs/queue"
+        },
+        "summary": {
+          "type": "string",
+          "description": "2–4 предложения для оператора"
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "client": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": true
+            },
+            "scenarios": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "slots": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "language": {
+              "$ref": "#/$defs/response_lang"
+            },
+            "emotion": {
+              "type": "string"
+            },
+            "transcript_tail": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "client",
+                      "bot"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "type",
+        "turn",
+        "queue",
+        "summary",
+        "context"
+      ]
+    },
+    "server.error": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "stt_unavailable",
+            "llm_unavailable",
+            "tts_unavailable",
+            "bad_frame",
+            "protocol",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "recoverable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "code",
+        "message"
+      ]
+    },
+    "server.session.end": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "session.end"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "goodbye",
+            "handoff",
+            "client",
+            "timeout",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "reason"
+      ]
+    },
+    "supervisor.session.created": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "session.created"
+        },
+        "channel": {
+          "$ref": "#/$defs/channel"
+        },
+        "caller_phone": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "type",
+        "channel",
+        "started_at"
+      ]
+    },
+    "supervisor.session.closed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "session.closed"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "turns": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "reason"
+      ]
+    },
+    "supervisor.case.created": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "case.created"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "supervisor",
+            "synthetic",
+            "dev"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "case_id",
+        "source"
+      ]
+    },
+    "supervisor.bench.progress": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "bench.progress"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "done": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "done",
+        "total"
+      ]
+    },
+    "supervisor.bench.finished": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "bench.finished"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "type",
+        "run_id",
+        "metrics"
+      ]
+    },
+    "supervisor.patch.progress": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "patch.progress"
+        },
+        "patch_id": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "proposing",
+            "validating",
+            "regression_before",
+            "regression_after",
+            "ready",
+            "failed"
+          ]
+        },
+        "done": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "patch_id",
+        "stage"
+      ]
+    },
+    "supervisor.patch.ready": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "patch.ready"
+        },
+        "patch_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "patch_id"
+      ]
+    },
+    "supervisor.catalog.changed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "catalog.changed"
+        },
+        "version": {
+          "type": "string"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "frozen": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "patch_applied",
+            "rollback",
+            "freeze",
+            "unfreeze"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "version",
+        "frozen",
+        "reason"
+      ]
+    },
+    "client.input.commit": {
+      "description": "Явный конец реплики (отпустили кнопку push-to-talk). Сервер закрывает ход сразу, не дожидаясь тишины VAD.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "input.commit"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/client.session.start"
+    },
+    {
+      "$ref": "#/$defs/client.text.input"
+    },
+    {
+      "$ref": "#/$defs/client.input.commit"
+    },
+    {
+      "$ref": "#/$defs/client.playback.started"
+    },
+    {
+      "$ref": "#/$defs/client.playback.finished"
+    },
+    {
+      "$ref": "#/$defs/client.control.interrupt"
+    },
+    {
+      "$ref": "#/$defs/client.control.mute"
+    },
+    {
+      "$ref": "#/$defs/client.session.end"
+    },
+    {
+      "$ref": "#/$defs/server.session.ready"
+    },
+    {
+      "$ref": "#/$defs/server.vad.speech_start"
+    },
+    {
+      "$ref": "#/$defs/server.vad.speech_end"
+    },
+    {
+      "$ref": "#/$defs/server.stt.partial"
+    },
+    {
+      "$ref": "#/$defs/server.stt.final"
+    },
+    {
+      "$ref": "#/$defs/server.router.hypothesis"
+    },
+    {
+      "$ref": "#/$defs/server.turn.trace"
+    },
+    {
+      "$ref": "#/$defs/server.dialog.state"
+    },
+    {
+      "$ref": "#/$defs/server.action.preview"
+    },
+    {
+      "$ref": "#/$defs/server.action.executed"
+    },
+    {
+      "$ref": "#/$defs/server.bot.text.delta"
+    },
+    {
+      "$ref": "#/$defs/server.bot.text.final"
+    },
+    {
+      "$ref": "#/$defs/server.tts.start"
+    },
+    {
+      "$ref": "#/$defs/server.tts.end"
+    },
+    {
+      "$ref": "#/$defs/server.tts.interrupt"
+    },
+    {
+      "$ref": "#/$defs/server.handoff"
+    },
+    {
+      "$ref": "#/$defs/server.error"
+    },
+    {
+      "$ref": "#/$defs/server.session.end"
+    },
+    {
+      "$ref": "#/$defs/supervisor.session.created"
+    },
+    {
+      "$ref": "#/$defs/supervisor.session.closed"
+    },
+    {
+      "$ref": "#/$defs/supervisor.case.created"
+    },
+    {
+      "$ref": "#/$defs/supervisor.bench.progress"
+    },
+    {
+      "$ref": "#/$defs/supervisor.bench.finished"
+    },
+    {
+      "$ref": "#/$defs/supervisor.patch.progress"
+    },
+    {
+      "$ref": "#/$defs/supervisor.patch.ready"
+    },
+    {
+      "$ref": "#/$defs/supervisor.catalog.changed"
+    }
+  ]
+}

@@ -1,0 +1,693 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hackalem.local/contracts/evolution.schema.json",
+  "title": "Auto-bench & catalog evolution objects",
+  "$defs": {
+    "Case": {
+      "type": "object",
+      "required": [
+        "case_id",
+        "source",
+        "text",
+        "lang",
+        "expected",
+        "created_at"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "pattern": "^CASE-\\d{4}$"
+        },
+        "source": {
+          "enum": [
+            "supervisor",
+            "synthetic",
+            "dev"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "lang": {
+          "enum": [
+            "ru",
+            "kk",
+            "mixed"
+          ]
+        },
+        "context": {
+          "type": "object"
+        },
+        "expected": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "SC01",
+              "SC02",
+              "SC03",
+              "SC04",
+              "SC05",
+              "SC06",
+              "SC07",
+              "SC08",
+              "SC09",
+              "SC10",
+              "SC11",
+              "SC12",
+              "SC13",
+              "SC14",
+              "SC15",
+              "SC16",
+              "SC17",
+              "SC18",
+              "SC19",
+              "SC20",
+              "SC21",
+              "SC22",
+              "SC23",
+              "SC24",
+              "SC25",
+              "SC26",
+              "SC27",
+              "SC28",
+              "SC29",
+              "SC30",
+              "SC31",
+              "SC32",
+              "SC33",
+              "SC34",
+              "SC35",
+              "SC36",
+              "SC37",
+              "SC38",
+              "SC39",
+              "SC40",
+              "SYS_OUT_OF_SCOPE",
+              "SYS_UNCLEAR",
+              "SYS_GOODBYE"
+            ]
+          },
+          "minItems": 1
+        },
+        "observed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "turn": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "note": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "CaseCreate": {
+      "type": "object",
+      "required": [
+        "text",
+        "expected"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "lang": {
+          "enum": [
+            "ru",
+            "kk",
+            "mixed"
+          ]
+        },
+        "expected": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "SC01",
+              "SC02",
+              "SC03",
+              "SC04",
+              "SC05",
+              "SC06",
+              "SC07",
+              "SC08",
+              "SC09",
+              "SC10",
+              "SC11",
+              "SC12",
+              "SC13",
+              "SC14",
+              "SC15",
+              "SC16",
+              "SC17",
+              "SC18",
+              "SC19",
+              "SC20",
+              "SC21",
+              "SC22",
+              "SC23",
+              "SC24",
+              "SC25",
+              "SC26",
+              "SC27",
+              "SC28",
+              "SC29",
+              "SC30",
+              "SC31",
+              "SC32",
+              "SC33",
+              "SC34",
+              "SC35",
+              "SC36",
+              "SC37",
+              "SC38",
+              "SC39",
+              "SC40",
+              "SYS_OUT_OF_SCOPE",
+              "SYS_UNCLEAR",
+              "SYS_GOODBYE"
+            ]
+          },
+          "minItems": 1
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "Metrics": {
+      "type": "object",
+      "required": [
+        "n",
+        "primary_acc",
+        "full_match"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer"
+        },
+        "primary_acc": {
+          "type": "number"
+        },
+        "full_match": {
+          "type": "number"
+        }
+      }
+    },
+    "BenchRun": {
+      "type": "object",
+      "required": [
+        "run_id",
+        "catalog_version",
+        "status",
+        "metrics"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^BR-\\d{4}$"
+        },
+        "catalog_version": {
+          "type": "string"
+        },
+        "dataset": {
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "finished",
+            "failed"
+          ]
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metrics": {
+          "type": "object",
+          "required": [
+            "all"
+          ],
+          "properties": {
+            "all": {
+              "type": "object",
+              "required": [
+                "n",
+                "primary_acc",
+                "full_match"
+              ],
+              "properties": {
+                "n": {
+                  "type": "integer"
+                },
+                "primary_acc": {
+                  "type": "number"
+                },
+                "full_match": {
+                  "type": "number"
+                }
+              }
+            },
+            "by_lang": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "n",
+                  "primary_acc",
+                  "full_match"
+                ],
+                "properties": {
+                  "n": {
+                    "type": "integer"
+                  },
+                  "primary_acc": {
+                    "type": "number"
+                  },
+                  "full_match": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "by_type": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "required": [
+                  "n",
+                  "primary_acc",
+                  "full_match"
+                ],
+                "properties": {
+                  "n": {
+                    "type": "integer"
+                  },
+                  "primary_acc": {
+                    "type": "number"
+                  },
+                  "full_match": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "intent_recall": {
+              "type": "number"
+            },
+            "confidence_buckets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "bucket": {
+                    "type": "string"
+                  },
+                  "n": {
+                    "type": "integer"
+                  },
+                  "primary_acc": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "latency_ms": {
+          "type": "object"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "text",
+              "expected",
+              "got"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "array"
+              },
+              "got": {
+                "type": "array"
+              }
+            }
+          }
+        }
+      }
+    },
+    "PatchOp": {
+      "type": "object",
+      "required": [
+        "op",
+        "scenario_id",
+        "field",
+        "value"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "add",
+            "append",
+            "replace",
+            "remove"
+          ]
+        },
+        "scenario_id": {
+          "type": "string",
+          "enum": [
+            "SC01",
+            "SC02",
+            "SC03",
+            "SC04",
+            "SC05",
+            "SC06",
+            "SC07",
+            "SC08",
+            "SC09",
+            "SC10",
+            "SC11",
+            "SC12",
+            "SC13",
+            "SC14",
+            "SC15",
+            "SC16",
+            "SC17",
+            "SC18",
+            "SC19",
+            "SC20",
+            "SC21",
+            "SC22",
+            "SC23",
+            "SC24",
+            "SC25",
+            "SC26",
+            "SC27",
+            "SC28",
+            "SC29",
+            "SC30",
+            "SC31",
+            "SC32",
+            "SC33",
+            "SC34",
+            "SC35",
+            "SC36",
+            "SC37",
+            "SC38",
+            "SC39",
+            "SC40"
+          ]
+        },
+        "field": {
+          "type": "string",
+          "enum": [
+            "description",
+            "not_this_if",
+            "examples.ru",
+            "examples.kk"
+          ]
+        },
+        "value": {}
+      }
+    },
+    "Patch": {
+      "type": "object",
+      "required": [
+        "patch_id",
+        "status",
+        "case_ids",
+        "base_version"
+      ],
+      "properties": {
+        "patch_id": {
+          "type": "string",
+          "pattern": "^PT-\\d{4}$"
+        },
+        "status": {
+          "enum": [
+            "proposing",
+            "validating",
+            "regression",
+            "ready",
+            "applied",
+            "rejected",
+            "failed"
+          ]
+        },
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "base_version": {
+          "type": "string"
+        },
+        "proposal": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "ops",
+            "rationale"
+          ],
+          "properties": {
+            "ops": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "op",
+                  "scenario_id",
+                  "field",
+                  "value"
+                ],
+                "properties": {
+                  "op": {
+                    "type": "string",
+                    "enum": [
+                      "add",
+                      "append",
+                      "replace",
+                      "remove"
+                    ]
+                  },
+                  "scenario_id": {
+                    "type": "string",
+                    "enum": [
+                      "SC01",
+                      "SC02",
+                      "SC03",
+                      "SC04",
+                      "SC05",
+                      "SC06",
+                      "SC07",
+                      "SC08",
+                      "SC09",
+                      "SC10",
+                      "SC11",
+                      "SC12",
+                      "SC13",
+                      "SC14",
+                      "SC15",
+                      "SC16",
+                      "SC17",
+                      "SC18",
+                      "SC19",
+                      "SC20",
+                      "SC21",
+                      "SC22",
+                      "SC23",
+                      "SC24",
+                      "SC25",
+                      "SC26",
+                      "SC27",
+                      "SC28",
+                      "SC29",
+                      "SC30",
+                      "SC31",
+                      "SC32",
+                      "SC33",
+                      "SC34",
+                      "SC35",
+                      "SC36",
+                      "SC37",
+                      "SC38",
+                      "SC39",
+                      "SC40"
+                    ]
+                  },
+                  "field": {
+                    "type": "string",
+                    "enum": [
+                      "description",
+                      "not_this_if",
+                      "examples.ru",
+                      "examples.kk"
+                    ]
+                  },
+                  "value": {}
+                }
+              },
+              "maxItems": 4
+            },
+            "rationale": {
+              "type": "string"
+            }
+          }
+        },
+        "diff": {
+          "type": "array",
+          "description": "готовый для UI дифф по полям",
+          "items": {
+            "type": "object",
+            "required": [
+              "scenario_id",
+              "field",
+              "before",
+              "after"
+            ],
+            "properties": {
+              "scenario_id": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              },
+              "before": {},
+              "after": {}
+            }
+          }
+        },
+        "regression": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "before": {
+              "type": "object"
+            },
+            "after": {
+              "type": "object"
+            },
+            "fixed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "broken": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "validator_log": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "applied_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        }
+      }
+    },
+    "CatalogVersion": {
+      "type": "object",
+      "required": [
+        "version",
+        "hash",
+        "created_at",
+        "frozen"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^v\\d+-[0-9a-f]{4}$"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hash": {
+          "type": "string"
+        },
+        "applied_patch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "frozen": {
+          "type": "boolean"
+        },
+        "current": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string"
+        },
+        "primary_acc": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

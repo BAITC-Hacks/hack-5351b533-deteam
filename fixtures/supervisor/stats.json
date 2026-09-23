@@ -1,0 +1,93 @@
+{
+  "sessions": 3,
+  "turns": 11,
+  "by_scenario": [
+    {
+      "scenario_id": "SC17",
+      "count": 2
+    },
+    {
+      "scenario_id": "SC21",
+      "count": 2
+    },
+    {
+      "scenario_id": "SYS_GOODBYE",
+      "count": 2
+    },
+    {
+      "scenario_id": "SC35",
+      "count": 1
+    },
+    {
+      "scenario_id": "SC27",
+      "count": 1
+    }
+  ],
+  "by_language": {
+    "ru": 8,
+    "kk": 1,
+    "mixed": 2
+  },
+  "by_decision": {
+    "run": 5,
+    "continue": 1,
+    "confirm": 1,
+    "clarify": 1,
+    "handoff": 1,
+    "goodbye": 2
+  },
+  "confidence_histogram": [
+    {
+      "bucket": "0.9+",
+      "count": 7
+    },
+    {
+      "bucket": "0.75-0.9",
+      "count": 3
+    },
+    {
+      "bucket": "0.45-0.75",
+      "count": 1
+    },
+    {
+      "bucket": "<0.45",
+      "count": 0
+    }
+  ],
+  "latency_ms": {
+    "stt": {
+      "p50": 210,
+      "p95": 260
+    },
+    "router": {
+      "p50": 95,
+      "p95": 640
+    },
+    "response": {
+      "p50": 380,
+      "p95": 430
+    },
+    "tts_first_audio": {
+      "p50": 240,
+      "p95": 280
+    },
+    "total": {
+      "p50": 640,
+      "p95": 1150
+    }
+  },
+  "speculative_hit_rate": 0.8,
+  "template_rate": 0.45,
+  "handoff_rate": 0.33,
+  "unclear_rate": 0.09,
+  "flagged_turns": [
+    {
+      "session_id": "phone-p01",
+      "turn": 1,
+      "transcript": "Алло, я по поводу страховки",
+      "scenario_id": "SYS_UNCLEAR",
+      "confidence": 0.52,
+      "decision": "clarify"
+    }
+  ]
+}

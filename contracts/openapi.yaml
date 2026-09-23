@@ -1,0 +1,301 @@
+openapi: 3.1.0
+info:
+  title: Voice Router API
+  version: 1.0.0
+  description: |
+    REST бэкенда Voice Router. Базовый адрес http://localhost:8000 (мок: тот же адрес, см. fixtures/README.md).
+
+    WebSocket-каналы (OpenAPI их не описывает, схема событий в ws-events.schema.json):
+    - `WS /ws/voice?channel=web&caller_phone=%2B77010000007` — голосовая сессия. Бинарные кадры: вход PCM16 LE 16 kHz mono по 20 мс,
+      выход PCM16 LE 24 kHz mono. Текстовые кадры: JSON-события.
+    - `WS /ws/supervisor` — поток всех событий всех сессий + события bench/patch/catalog. Только сервер → клиент.
+
+    Телефония: AudioSocket TCP :9092 (протокол в docs/telephony/README.md) + эндпоинты /api/telephony/*.
+servers:
+  - url: http://localhost:8000
+tags:
+  - {name: meta}
+  - {name: sessions}
+  - {name: catalog}
+  - {name: evolution}
+  - {name: telephony}
+paths:
+  /api/health:
+    get:
+      tags: [meta]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {type: object, properties: {status: {const: ok}, catalog_version: {type: string}, frozen: {type: boolean}, models: {type: object}}}
+  /api/clients:
+    get:
+      tags: [meta]
+      summary: Персоны из mock_backend для выбора «звоню с номера» в вебе
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {type: object, properties: {client_id: {type: string}, full_name: {type: string}, phone: {type: string}, city: {type: string}, preferred_language: {type: string}, products: {type: array, items: {type: string}}}}
+  /api/route:
+    post:
+      tags: [meta]
+      summary: Разовая маршрутизация текста без сессии (отладка, bench, демо текстом)
+      requestBody:
+        content:
+          application/json:
+            schema: {type: object, required: [text], properties: {text: {type: string}, state: {$ref: "dialog-state.schema.json"}}}
+      responses:
+        "200":
+          description: Выход роутера + решение политики
+          content:
+            application/json:
+              schema: {type: object, properties: {router: {$ref: "router-output.schema.json"}, decision: {type: string}, latency_ms: {type: integer}, model: {type: string}}}
+  /api/stats:
+    get:
+      tags: [sessions]
+      summary: Агрегаты для панели супервизора
+      parameters:
+        - {name: since, in: query, schema: {type: string, format: date-time}}
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Stats"}}}}
+  /api/sessions:
+    get:
+      tags: [sessions]
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, default: 50}}
+        - {name: channel, in: query, schema: {type: string, enum: [web, phone, text]}}
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SessionSummary"}}}}}
+  /api/sessions/{session_id}:
+    get:
+      tags: [sessions]
+      parameters: [{name: session_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: Сессия с трассировками всех ходов и транскриптом
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SessionSummary"
+                  - type: object
+                    properties:
+                      transcript: {type: array, items: {type: object, properties: {turn: {type: integer}, role: {enum: [client, bot]}, text: {type: string}, lang: {type: string}}}}
+                      traces: {type: array, items: {$ref: "trace.schema.json"}}
+                      final_state: {$ref: "dialog-state.schema.json"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/sessions/{session_id}/events:
+    get:
+      tags: [sessions]
+      summary: Все события сессии для реплея (JSON Lines, как файлы fixtures/sessions/*.jsonl)
+      parameters: [{name: session_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: OK, content: {application/x-ndjson: {schema: {type: string}}}}
+  /api/catalog:
+    get:
+      tags: [catalog]
+      summary: Текущая версия каталога, краткий вид для UI
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: {$ref: "evolution.schema.json#/$defs/CatalogVersion"}
+                  scenarios: {type: array, items: {$ref: "#/components/schemas/ScenarioBrief"}}
+  /api/catalog/versions:
+    get:
+      tags: [catalog]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "evolution.schema.json#/$defs/CatalogVersion"}}}}}
+  /api/catalog/versions/{version}:
+    get:
+      tags: [catalog]
+      summary: Полный каталог версии (формат docs/scenarios.json)
+      parameters: [{name: version, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: object}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /api/catalog/freeze:
+    post:
+      tags: [catalog]
+      requestBody: {content: {application/json: {schema: {type: object, required: [frozen], properties: {frozen: {type: boolean}}}}}}
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/CatalogVersion"}}}}
+  /api/catalog/rollback:
+    post:
+      tags: [catalog]
+      requestBody: {content: {application/json: {schema: {type: object, required: [version], properties: {version: {type: string}}}}}}
+      responses:
+        "200": {description: Новая текущая версия, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/CatalogVersion"}}}}
+        "409": {$ref: "#/components/responses/Frozen"}
+  /api/cases:
+    get:
+      tags: [evolution]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "evolution.schema.json#/$defs/Case"}}}}}
+    post:
+      tags: [evolution]
+      summary: Пометить ход как ошибочный → кейс регрессии
+      requestBody: {content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/CaseCreate"}}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/Case"}}}}
+  /api/cases/{case_id}:
+    delete:
+      tags: [evolution]
+      parameters: [{name: case_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: Deleted}
+  /api/bench:
+    post:
+      tags: [evolution]
+      summary: Запустить прогон (dev + кейсы) на версии каталога. Прогресс идёт в /ws/supervisor (bench.progress, bench.finished)
+      requestBody: {content: {application/json: {schema: {type: object, properties: {catalog_version: {type: string}, include_cases: {type: boolean, default: true}}}}}}
+      responses:
+        "202": {description: Accepted, content: {application/json: {schema: {type: object, properties: {run_id: {type: string}}}}}}
+  /api/bench/runs:
+    get:
+      tags: [evolution]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "evolution.schema.json#/$defs/BenchRun"}}}}}
+  /api/bench/runs/{run_id}:
+    get:
+      tags: [evolution]
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/BenchRun"}}}}
+  /api/patches:
+    get:
+      tags: [evolution]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "evolution.schema.json#/$defs/Patch"}}}}}
+    post:
+      tags: [evolution]
+      summary: Предложить патч по кейсам. Асинхронно, стадии приходят patch.progress, финал patch.ready
+      requestBody: {content: {application/json: {schema: {type: object, required: [case_ids], properties: {case_ids: {type: array, items: {type: string}, minItems: 1}}}}}}
+      responses:
+        "202": {description: Accepted, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/Patch"}}}}
+  /api/patches/{patch_id}:
+    get:
+      tags: [evolution]
+      parameters: [{name: patch_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/Patch"}}}}
+  /api/patches/{patch_id}/apply:
+    post:
+      tags: [evolution]
+      parameters: [{name: patch_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Новая версия каталога, событие catalog.changed, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/CatalogVersion"}}}}
+        "409": {$ref: "#/components/responses/Frozen"}
+  /api/patches/{patch_id}/reject:
+    post:
+      tags: [evolution]
+      parameters: [{name: patch_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "evolution.schema.json#/$defs/Patch"}}}}
+  /api/telephony/calls:
+    post:
+      tags: [telephony]
+      summary: Asterisk регистрирует входящий звонок до AudioSocket (func_curl). Ответ text/plain = UUID для AudioSocket()
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [caller, channel]
+              properties:
+                caller: {type: string, description: "CALLERID(num), любой формат; сервер нормализует к +7XXXXXXXXXX"}
+                dnid: {type: string}
+                channel: {type: string, description: "${CHANNEL}, нужен для AMI Redirect при переводе"}
+                uniqueid: {type: string}
+      responses:
+        "200":
+          description: UUID сессии
+          content:
+            text/plain: {schema: {type: string, format: uuid}, example: 3f6c1a2e-9b7d-4c1e-8a55-2d0c7e9b1f40}
+  /api/telephony/calls/{call_uuid}/outcome:
+    get:
+      tags: [telephony]
+      summary: Исход звонка. Запасной путь, если AudioSocket() вернул управление в диалплан
+      parameters: [{name: call_uuid, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: "text/plain: `hangup` или `transfer:<queue>`. С Accept: application/json полный объект"
+          content:
+            text/plain: {schema: {type: string}, example: "transfer:claims_team"}
+            application/json: {schema: {$ref: "#/components/schemas/CallOutcome"}}
+  /api/telephony/calls/{call_uuid}/hangup:
+    post:
+      tags: [telephony]
+      summary: Asterisk сообщает о завершении звонка (экстеншен h)
+      parameters: [{name: call_uuid, in: path, required: true, schema: {type: string}}]
+      requestBody: {content: {application/x-www-form-urlencoded: {schema: {type: object, properties: {cause: {type: string}}}}}}
+      responses:
+        "200": {description: OK, content: {text/plain: {schema: {type: string}, example: ok}}}
+components:
+  responses:
+    NotFound: {description: Not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    Frozen: {description: Каталог заморожен, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  schemas:
+    Error:
+      type: object
+      properties: {error: {type: object, properties: {code: {type: string}, message: {type: string}}}}
+    ScenarioBrief:
+      type: object
+      properties:
+        scenario_id: {type: string}
+        name: {type: string}
+        name_ru: {type: string}
+        domain: {type: string}
+        category: {type: string}
+        priority: {type: string, enum: [normal, high, urgent]}
+        fast_path_eligible: {type: boolean}
+        requires_identification: {type: boolean}
+        requires_confirmation: {type: boolean}
+    SessionSummary:
+      type: object
+      properties:
+        session_id: {type: string}
+        channel: {type: string, enum: [web, phone, text]}
+        caller_phone: {type: [string, "null"]}
+        client_id: {type: [string, "null"]}
+        started_at: {type: string, format: date-time}
+        ended_at: {type: [string, "null"]}
+        end_reason: {type: [string, "null"]}
+        turns: {type: integer}
+        languages: {type: array, items: {type: string}}
+        scenarios: {type: array, items: {type: string}}
+        handoff_queue: {type: [string, "null"]}
+        latency_total_p50: {type: integer}
+        catalog_version: {type: string}
+        flagged: {type: boolean, description: есть ход с уверенностью ниже порога, SYS_UNCLEAR или ручная пометка}
+    Stats:
+      type: object
+      properties:
+        sessions: {type: integer}
+        turns: {type: integer}
+        by_scenario: {type: array, items: {type: object, properties: {scenario_id: {type: string}, count: {type: integer}}}}
+        by_language: {type: object, additionalProperties: {type: integer}}
+        by_decision: {type: object, additionalProperties: {type: integer}}
+        confidence_histogram: {type: array, items: {type: object, properties: {bucket: {type: string}, count: {type: integer}}}}
+        latency_ms: {type: object, description: "p50/p95 по этапам", additionalProperties: {type: object, properties: {p50: {type: integer}, p95: {type: integer}}}}
+        speculative_hit_rate: {type: number}
+        template_rate: {type: number}
+        handoff_rate: {type: number}
+        unclear_rate: {type: number}
+        flagged_turns: {type: array, items: {type: object, properties: {session_id: {type: string}, turn: {type: integer}, transcript: {type: string}, scenario_id: {type: string}, confidence: {type: number}, decision: {type: string}}}}
+    CallOutcome:
+      type: object
+      properties:
+        action: {enum: [hangup, transfer, pending]}
+        queue: {type: [string, "null"]}
+        summary: {type: [string, "null"]}
+        session_id: {type: string}

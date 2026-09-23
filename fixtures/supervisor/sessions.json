@@ -1,0 +1,69 @@
+[
+  {
+    "session_id": "web-d03",
+    "channel": "web",
+    "caller_phone": null,
+    "client_id": "C007",
+    "started_at": "2026-10-01T11:58:00Z",
+    "ended_at": "2026-10-01T12:00:10Z",
+    "end_reason": "goodbye",
+    "turns": 5,
+    "languages": [
+      "ru"
+    ],
+    "scenarios": [
+      "SC17",
+      "SC27",
+      "SC31",
+      "SC18"
+    ],
+    "handoff_queue": null,
+    "latency_total_p50": 313,
+    "catalog_version": "v1-3b1d",
+    "flagged": false
+  },
+  {
+    "session_id": "web-d04",
+    "channel": "web",
+    "caller_phone": "+77010000002",
+    "client_id": "C002",
+    "started_at": "2026-10-01T12:01:00Z",
+    "ended_at": "2026-10-01T12:02:05Z",
+    "end_reason": "goodbye",
+    "turns": 3,
+    "languages": [
+      "mixed",
+      "kk"
+    ],
+    "scenarios": [
+      "SC21",
+      "SC22"
+    ],
+    "handoff_queue": null,
+    "latency_total_p50": 640,
+    "catalog_version": "v1-3b1d",
+    "flagged": false
+  },
+  {
+    "session_id": "phone-p01",
+    "channel": "phone",
+    "caller_phone": "+77010000004",
+    "client_id": "C004",
+    "started_at": "2026-10-01T12:05:00Z",
+    "ended_at": "2026-10-01T12:06:00Z",
+    "end_reason": "handoff",
+    "turns": 3,
+    "languages": [
+      "ru"
+    ],
+    "scenarios": [
+      "SYS_UNCLEAR",
+      "SC35",
+      "SC37"
+    ],
+    "handoff_queue": "complaints_team",
+    "latency_total_p50": 847,
+    "catalog_version": "v1-3b1d",
+    "flagged": true
+  }
+]

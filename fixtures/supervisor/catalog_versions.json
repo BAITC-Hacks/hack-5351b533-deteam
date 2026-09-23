@@ -1,0 +1,35 @@
+[
+  {
+    "version": "v1-3b1d",
+    "parent": null,
+    "hash": "3b1d7e20",
+    "applied_patch": null,
+    "created_at": "2026-10-01T09:00:00Z",
+    "frozen": false,
+    "current": false,
+    "note": "исходный каталог кита",
+    "primary_acc": 0.904
+  },
+  {
+    "version": "v2-77c0",
+    "parent": "v1-3b1d",
+    "hash": "77c0a9f1",
+    "applied_patch": "PT-0001",
+    "created_at": "2026-10-01T10:40:00Z",
+    "frozen": false,
+    "current": false,
+    "note": "SC26/SC30 граница",
+    "primary_acc": 0.923
+  },
+  {
+    "version": "v3-9f2c",
+    "parent": "v2-77c0",
+    "hash": "9f2c11ab",
+    "applied_patch": "PT-0002",
+    "created_at": "2026-10-01T11:20:00Z",
+    "frozen": true,
+    "current": true,
+    "note": "SC11/SC12 по времени ДТП",
+    "primary_acc": 0.936
+  }
+]
