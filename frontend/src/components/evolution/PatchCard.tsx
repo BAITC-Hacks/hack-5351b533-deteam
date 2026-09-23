@@ -1,6 +1,7 @@
 import type { Patch } from '../../api'
 import { useCatalog } from '../../lib/catalog-context'
 import { dateTime, pct } from '../../lib/format'
+import { Icon } from '../Icon'
 import { Badge, Panel } from '../ui'
 
 const STATUS: Record<Patch['status'], { label: string; tone: 'ok' | 'warn' | 'bad' | 'info' | 'neutral' }> = {
@@ -141,9 +142,9 @@ export function PatchCard(props: { patch: Patch; frozen: boolean; busy: boolean;
           </table>
           <div className="row gap wrap">
             <span className="small">Починено:</span>
-            {reg.fixed?.length ? reg.fixed.map((id) => <Badge key={id} tone="ok">✓ {id}</Badge>) : <span className="muted small">—</span>}
+            {reg.fixed?.length ? reg.fixed.map((id) => <Badge key={id} tone="ok"><Icon name="check" size={14} />{id}</Badge>) : <span className="muted small">—</span>}
             <span className="small">Сломано:</span>
-            {reg.broken?.length ? reg.broken.map((id) => <Badge key={id} tone="bad">✗ {id}</Badge>) : <Badge tone="ok">ничего</Badge>}
+            {reg.broken?.length ? reg.broken.map((id) => <Badge key={id} tone="bad"><Icon name="close" size={14} />{id}</Badge>) : <Badge tone="ok">ничего</Badge>}
           </div>
         </>
       )}

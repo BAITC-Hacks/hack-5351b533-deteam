@@ -1,5 +1,6 @@
 import type { CatalogVersion } from '../../api'
 import { dateTime, pct } from '../../lib/format'
+import { Icon } from '../Icon'
 import { Badge, Empty, Panel } from '../ui'
 
 /** Тренд primary_acc по версиям каталога: одна линия, точки подписаны значением и версией */
@@ -43,7 +44,7 @@ function AccuracyTrend({ versions }: { versions: CatalogVersion[] }) {
 export function VersionsPanel(props: { versions: CatalogVersion[]; frozen: boolean; busy: boolean; onRollback: (version: string) => void }) {
   const versions = [...props.versions].sort((a, b) => a.created_at.localeCompare(b.created_at))
   return (
-    <Panel title="Версии каталога" hint="Каждый применённый патч — новая версия с хэшем. Откат возвращает любую прошлую">
+    <Panel title="Версии каталога">
       {versions.length ? (
         <>
           <AccuracyTrend versions={versions} />
@@ -70,7 +71,7 @@ export function VersionsPanel(props: { versions: CatalogVersion[]; frozen: boole
                   <td className="right num">{v.primary_acc != null ? pct(v.primary_acc) : '—'}</td>
                   <td className="right nowrap">
                     {v.current ? (
-                      <Badge tone="ok">текущая{v.frozen ? ' · 🔒' : ''}</Badge>
+                      <Badge tone="ok" title={v.frozen ? 'Текущая замороженная версия' : 'Текущая версия'}>текущая{v.frozen && <Icon name="lock" size={14} spacing="after" />}</Badge>
                     ) : (
                       <button disabled={props.frozen || props.busy} onClick={() => props.onRollback(v.version)} title={props.frozen ? 'Каталог заморожен' : 'Сделать текущей'}>
                         Откатить

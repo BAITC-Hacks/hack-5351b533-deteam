@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import type { Case } from '../../api'
 import { dateTime } from '../../lib/format'
+import { Icon } from '../Icon'
 import { Badge, Empty, LangBadge, Panel, ScenarioChip } from '../ui'
 
 const SOURCE_LABEL: Record<Case['source'], string> = { supervisor: 'супервизор', synthetic: 'синтетика', dev: 'dev-набор' }
@@ -19,7 +20,6 @@ export function CasesPanel(props: {
   return (
     <Panel
       title={`Кейсы · ${cases.length}`}
-      hint="Где роутер ошибся: что ждали и что он выбрал. Отметьте кейсы и попросите модель предложить правку каталога"
       actions={
         <button className="primary" disabled={!selected.size || props.busy} onClick={props.onPropose} title={props.frozen ? 'Предложить можно, применить — только после снятия заморозки' : undefined}>
           Предложить патч{selected.size ? ` · ${selected.size}` : ''}
@@ -74,8 +74,8 @@ export function CasesPanel(props: {
                   <Badge>{SOURCE_LABEL[c.source] ?? c.source}</Badge>
                 </td>
                 <td>
-                  <button className="chip-x" title="Удалить кейс" onClick={() => props.onDelete(c.case_id)}>
-                    ×
+                  <button className="chip-x" title="Удалить кейс" aria-label={`Удалить кейс ${c.case_id}`} onClick={() => props.onDelete(c.case_id)}>
+                    <Icon name="close" size={14} spacing="none" />
                   </button>
                 </td>
               </tr>

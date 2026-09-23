@@ -24,7 +24,6 @@ export function SessionInspector({ trace, finalState, ended, extra, activeTab, o
     <Panel
       className="session-inspector trace"
       title="Разбор звонка"
-      hint={ended ? 'Решение робота по ходу и состояние в конце разговора' : 'Решение робота по ходу и текущее состояние разговора'}
       actions={
         <div className="session-inspector-tabs" role="group" aria-label="Раздел разбора звонка">
           <button

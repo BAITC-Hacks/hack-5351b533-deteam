@@ -47,7 +47,6 @@ export function BenchPanel(props: { runs: BenchRun[]; progress: { done: number; 
   return (
     <Panel
       title="Прогоны bench"
-      hint="Тот же роутер, что в звонке, на dev-наборе и накопленных кейсах"
       actions={
         <button disabled={props.busy || !!props.progress} onClick={props.onStart}>
           Запустить прогон

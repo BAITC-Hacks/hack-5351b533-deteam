@@ -1,4 +1,5 @@
 import { Navigate, NavLink, Route, Routes } from 'react-router'
+import { Icon } from './components/Icon'
 import { Badge } from './components/ui'
 import { CatalogProvider } from './lib/catalog'
 import { useCatalog } from './lib/catalog-context'
@@ -17,16 +18,9 @@ export default function App() {
       <CatalogProvider>
         <div className="app">
           <nav className="nav" aria-label="Основная навигация">
-            <NavLink to="/supervisor" className="brand" aria-label="Voice Router — открыть супервизора">
-              <span className="brand-mark" aria-hidden="true">
-                <svg viewBox="0 0 32 32" fill="none">
-                  <path d="M10 9h7a6 6 0 0 1 6 6v8M10 9v14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-                  <circle cx="10" cy="9" r="3" fill="currentColor" />
-                  <circle cx="10" cy="23" r="3" fill="currentColor" />
-                  <circle cx="23" cy="23" r="3" fill="currentColor" />
-                </svg>
-              </span>
-              <span>Voice Router</span>
+            <NavLink to="/supervisor" className="brand" aria-label="NotSoFar v.7 — открыть супервизора">
+              <img className="brand-logo" src="/notsofar-mark.png" width="48" height="48" alt="" aria-hidden="true" />
+              <span className="brand-wordmark">NotSoFar <span className="brand-version">v.7</span></span>
             </NavLink>
             <NavLink to="/call">Звонок</NavLink>
             <NavLink to="/supervisor">Супервизор</NavLink>
@@ -56,20 +50,14 @@ export default function App() {
 const LIVE_LABEL = { open: 'онлайн', connecting: 'подключение…', closed: 'нет связи' } as const
 const LIVE_TONE = { open: 'ok', connecting: 'neutral', closed: 'bad' } as const
 
-/** Версия каталога и замок заморозки всегда на виду (EVOLUTION.md §6), рядом — связь с живым потоком */
 function HeaderStatus() {
   const { catalog } = useCatalog()
   const live = useLiveStatus()
-  const v = catalog?.version
   return (
     <span className="nav-status">
-      {v && (
-        <span title={`Хэш ${v.hash}${v.note ? ` · ${v.note}` : ''}`}>
-          каталог <strong>{v.version}</strong> <code className="muted">{v.hash}</code> {v.frozen && <Badge tone="info">🔒 заморожен</Badge>}
-        </span>
-      )}
+      {catalog?.version.frozen && <Badge tone="info"><Icon name="lock" size={14} /> Каталог заморожен</Badge>}
       <Badge tone={LIVE_TONE[live]} title="Живой поток событий WS /ws/supervisor">
-        ● {LIVE_LABEL[live]}
+        <Icon name="statusDot" size={8} />{LIVE_LABEL[live]}
       </Badge>
     </span>
   )

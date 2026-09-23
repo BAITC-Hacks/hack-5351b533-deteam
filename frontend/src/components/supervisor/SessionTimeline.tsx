@@ -141,7 +141,7 @@ export function SessionTimeline({ model, traces, selected, onSelect }: {
             </button>
           ))}
         </div>
-        <p className="session-timeline-note">Темы относятся к ходу целиком; отдельных таймкодов для слов нет.</p>
+        <p className="session-timeline-note">Темы показаны по ходам, без привязки к отдельным словам.</p>
       </div>
     )
   }
@@ -231,7 +231,7 @@ export function SessionTimeline({ model, traces, selected, onSelect }: {
           ))}
         </div>
       )}
-      <p className="session-timeline-note">Метки времени получены из событий звонка. Темы относятся к ходу целиком; отдельных таймкодов для слов нет.</p>
+      <p className="session-timeline-note">Время приблизительное: темы относятся ко всему ходу.</p>
     </div>
   )
 }
