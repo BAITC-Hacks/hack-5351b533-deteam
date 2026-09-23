@@ -34,7 +34,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     return () => {
       stopped = true
       clearTimeout(retry)
-      ws?.close()
+      // Закрытие ещё не открытого сокета браузер пишет в консоль предупреждением — закроем после open
+      if (ws?.readyState === WebSocket.CONNECTING) ws.onopen = () => ws?.close()
+      else ws?.close()
     }
   }, [])
 

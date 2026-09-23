@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { Catalog, Client, ScenarioBrief } from '../api'
+import type { Catalog, CatalogVersion, Client, ScenarioBrief } from '../api'
 
 export interface CatalogCtx {
   catalog: Catalog | null
@@ -8,6 +8,9 @@ export interface CatalogCtx {
   scenarioName: (id: string) => string
   client: (id: string | null | undefined) => Client | undefined
   clients: Client[]
+  reload: () => void
+  /** Обновить версию каталога по ответу freeze/apply/rollback */
+  setVersion: (v: Partial<CatalogVersion>) => void
 }
 
 export const CatalogContext = createContext<CatalogCtx | null>(null)

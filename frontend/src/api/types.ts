@@ -210,3 +210,78 @@ export const FLAG_CONFIDENCE = 0.75 // ниже — ход спорный
 export const TARGET_ROUTER_MS = 500
 export const TARGET_TOTAL_MS = 1500 // зелёный
 export const WARN_TOTAL_MS = 3000 // жёлтый, выше — красный
+
+// ---------- Эволюция (evolution.schema.json) ----------
+
+export interface Metrics {
+  n: number
+  primary_acc: number
+  full_match: number
+}
+
+export interface BenchRun {
+  run_id: string
+  catalog_version: string
+  dataset?: { dev?: number; cases?: number }
+  status: 'running' | 'finished' | 'failed'
+  started_at?: string
+  finished_at?: string | null
+  metrics: {
+    all: Metrics
+    by_lang?: Record<string, Metrics>
+    by_type?: Record<string, Metrics>
+    intent_recall?: number
+    confidence_buckets?: { bucket: string; n: number; primary_acc: number }[]
+  }
+  latency_ms?: Record<string, number>
+  errors?: { id: string; text: string; expected: ScenarioId[]; got: ScenarioId[] }[]
+}
+
+export type PatchStatus = 'proposing' | 'validating' | 'regression' | 'ready' | 'applied' | 'rejected' | 'failed'
+export type PatchStage = 'proposing' | 'validating' | 'regression_before' | 'regression_after' | 'ready' | 'failed'
+
+export interface Patch {
+  patch_id: string
+  status: PatchStatus
+  case_ids: string[]
+  base_version: string
+  proposal: {
+    ops: { op: 'add' | 'append' | 'replace' | 'remove'; scenario_id: ScenarioId; field: string; value: unknown }[]
+    rationale: string
+  } | null
+  diff?: { scenario_id: ScenarioId; field: string; before: unknown; after: unknown }[]
+  regression?: {
+    before?: Partial<Metrics> & { run_id?: string }
+    after?: Partial<Metrics> & { run_id?: string }
+    fixed?: string[]
+    broken?: string[]
+  } | null
+  validator_log?: string[]
+  applied_version?: string | null
+  created_at?: string
+}
+
+// ---------- Голосовая сессия WS /ws/voice (ws-events.schema.json) ----------
+
+export interface VoiceEvent {
+  type: string
+  t: number
+  session_id: string
+  turn?: number | null
+  [key: string]: unknown
+}
+
+/** Событие handoff: карточка для оператора */
+export interface HandoffEvent extends VoiceEvent {
+  type: 'handoff'
+  queue: string
+  summary: string
+  context: {
+    client?: Record<string, unknown> | null
+    scenarios?: ScenarioId[]
+    slots?: Record<string, unknown>
+    language?: ResponseLang
+    emotion?: string
+    transcript_tail?: { role: 'client' | 'bot'; text: string }[]
+  }
+}

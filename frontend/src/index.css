@@ -169,3 +169,66 @@ input:not([type]), textarea { width: 100%; }
 .seg-router { background: #0f8a5f; }
 .seg-response { background: #a78bfa; }
 .seg-tts_first_audio { background: #f59e0b; }
+
+.row-selected { background: var(--info-bg); }
+.row-current { background: var(--ok-bg); }
+
+/* evolution */
+.progress { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
+.stepper { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.stepper li { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.step-mark { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--neutral-bg); font-size: 12px; }
+.step-done { color: var(--ok) !important; }
+.step-done .step-mark { background: var(--ok-bg); }
+.step-active { color: var(--text) !important; font-weight: 600; }
+.step-active .step-mark { background: var(--info); color: #fff; }
+.patch { border-color: var(--accent); }
+.diff-block { margin-bottom: 10px; }
+.diff { list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.diff li { padding: 3px 8px; display: flex; gap: 8px; }
+.diff-mark { font-family: ui-monospace, Consolas, monospace; width: 10px; flex-shrink: 0; }
+.diff-add { background: var(--ok-bg); }
+.diff-del { background: var(--bad-bg); text-decoration: line-through; }
+.log { margin: 0; padding-left: 18px; }
+.patch-actions { margin-top: 14px; }
+.trend { margin: 0 0 10px; }
+.trend svg { width: 100%; height: auto; display: block; }
+.trend-axis { stroke: var(--border); stroke-width: 1; }
+.trend-line { fill: none; stroke: var(--bar); stroke-width: 2; stroke-linejoin: round; }
+.trend-dot { fill: var(--bar); stroke: var(--surface); stroke-width: 2; }
+.trend-dot-current { fill: var(--accent); }
+.trend-hit { fill: transparent; cursor: default; }
+.trend-value { font-size: 12px; fill: var(--text); font-family: ui-monospace, Consolas, monospace; }
+.trend-label { font-size: 11px; fill: var(--muted); }
+.compact-kpis { margin: 10px 0; }
+
+/* operator */
+.handoffs { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.handoff { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-left: 4px solid var(--bad); border-radius: var(--radius); background: var(--surface); }
+.handoff-live { box-shadow: 0 0 0 2px var(--info-bg); }
+.handoff-client { font-size: 15px; }
+.handoff-summary { margin: 0; font-size: 15px; }
+.tail { display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--bg); border-radius: 6px; font-size: 13px; }
+
+/* call */
+.call-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented button { border: none; border-radius: 0; }
+.seg-active { background: var(--text) !important; color: #fff; }
+.ptt { min-width: 220px; }
+.ptt-down { background: var(--bad); border-color: var(--bad); color: #fff; }
+.mic-meter { display: inline-flex; align-items: center; gap: 6px; }
+.mic-meter-track { width: 80px; height: 8px; background: var(--neutral-bg); border-radius: 4px; overflow: hidden; }
+.mic-meter-fill { display: block; height: 100%; background: var(--accent); transition: width .08s linear; }
+.live-dialog { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 360px); min-height: 320px; overflow-y: auto; }
+.bubble.big { font-size: 18px; }
+.bubble-partial { color: var(--muted); font-style: italic; }
+.hypothesis { align-self: flex-end; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 6px; align-items: center; max-width: 85%; }
+.hypothesis-live .chip { background: var(--info-bg); }
+.action-card { align-self: center; width: 80%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); }
+.action-preview { background: var(--warn-bg); border-color: var(--warn); }
+.action-done { background: var(--ok-bg); border-color: var(--ok); }
+.action-error { background: var(--bad-bg); border-color: var(--bad); }
+.handoff-banner { font-size: 15px; }
+.text-input { margin-top: 10px; }
+.median-bar { position: sticky; bottom: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.12); display: flex; align-items: center; justify-content: center; gap: 16px; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }

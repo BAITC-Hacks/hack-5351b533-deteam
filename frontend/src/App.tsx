@@ -5,6 +5,8 @@ import { useCatalog } from './lib/catalog-context'
 import { LiveProvider } from './lib/live'
 import { useLiveStatus } from './lib/live-context'
 import { CallPage } from './pages/CallPage'
+import { EvolutionPage } from './pages/EvolutionPage'
+import { OperatorPage } from './pages/OperatorPage'
 import { ScenariosPage } from './pages/ScenariosPage'
 import { SessionPage } from './pages/SessionPage'
 import { SupervisorPage } from './pages/SupervisorPage'
@@ -16,9 +18,11 @@ export default function App() {
         <div className="app">
           <nav className="nav">
             <span className="brand">Voice Router</span>
-            <NavLink to="/supervisor">Супервизор</NavLink>
-            <NavLink to="/scenarios">Каталог сценариев</NavLink>
             <NavLink to="/call">Звонок</NavLink>
+            <NavLink to="/supervisor">Супервизор</NavLink>
+            <NavLink to="/evolution">Эволюция</NavLink>
+            <NavLink to="/operator">Оператор</NavLink>
+            <NavLink to="/scenarios">Каталог</NavLink>
             <HeaderStatus />
           </nav>
           <main className="main">
@@ -28,6 +32,8 @@ export default function App() {
               <Route path="/supervisor/sessions/:id" element={<SessionPage />} />
               <Route path="/scenarios" element={<ScenariosPage />} />
               <Route path="/call" element={<CallPage />} />
+              <Route path="/evolution" element={<EvolutionPage />} />
+              <Route path="/operator" element={<OperatorPage />} />
             </Routes>
           </main>
         </div>
