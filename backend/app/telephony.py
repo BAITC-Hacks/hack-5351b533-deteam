@@ -296,3 +296,64 @@ async def start_audiosocket():
     print(f"[tel] AudioSocket listening on {AUDIOSOCKET_BIND}:{AUDIOSOCKET_PORT}"
           f" (AMI {'on ' + AMI['HOST'] if AMI['HOST'] else 'off'})", flush=True)
     return srv
+
+
+# ---------------------------------------------------------------- полная запись звонка (MinIO uploader -> backend)
+import json as _json, re as _re, datetime as _dt
+from fastapi.responses import JSONResponse as _JSON
+from . import config as _config
+
+REC_FILE = _config.BACKEND / "logs" / "recordings.jsonl"
+RECORDINGS: dict[str, dict] = {}     # call_id (Asterisk UNIQUEID / ARI channel.id) -> уведомление
+_REC_REQUIRED = ("call_id", "recording_uri", "recording_url", "bucket", "object_key", "content_type", "size_bytes", "duration_ms", "ended_at", "sha256")
+
+def _load_recordings():
+    try:
+        for line in REC_FILE.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                x = _json.loads(line); RECORDINGS[x["call_id"]] = x
+    except FileNotFoundError:
+        pass
+_load_recordings()
+
+def session_for_call(call_id: str):
+    for rec in CALLS.values():
+        if call_id in (rec.get("uniqueid"), rec.get("channel_id")):
+            return rec.get("session_id")
+    return None
+
+def recording_for_session(session_id: str):
+    for rec in CALLS.values():
+        if rec.get("session_id") == session_id:
+            for k in (rec.get("channel_id"), rec.get("uniqueid")):
+                if k and k in RECORDINGS: return RECORDINGS[k]
+    return None
+
+def _rec_error(status, code, msg): return _JSON({"error": {"code": code, "message": msg}}, status)
+
+@router.post("/api/telephony/calls/{call_id}/recording")
+async def recording_callback(call_id: str, r: Request):
+    """Uploader сообщает о готовой полной записи в MinIO. Идемпотентно по (call_id, recording_uri, sha256)."""
+    token = os.getenv("RECORDING_CALLBACK_TOKEN")
+    if token and r.headers.get("authorization") != f"Bearer {token}":
+        return _rec_error(401, "unauthorized", "bad or missing bearer token")
+    try: body = await r.json()
+    except Exception: return _rec_error(400, "invalid_input", "JSON body required")
+    miss = [k for k in _REC_REQUIRED if k not in body]
+    if miss: return _rec_error(422, "invalid_input", f"missing fields: {', '.join(miss)}")
+    if body["call_id"] != call_id: return _rec_error(400, "invalid_input", "call_id mismatch")
+    if not str(body["recording_uri"]).startswith("s3://") or not _re.fullmatch(r"[a-f0-9]{64}", str(body["sha256"])) \
+            or body["content_type"] != "audio/wav" or int(body["size_bytes"]) < 1:
+        return _rec_error(422, "invalid_input", "bad recording_uri / sha256 / content_type / size_bytes")
+    prev = RECORDINGS.get(call_id)
+    if prev and (prev["recording_uri"], prev["sha256"]) != (body["recording_uri"], body["sha256"]):
+        return _rec_error(409, "conflict", "recording already saved with different content")
+    rec = {k: body[k] for k in _REC_REQUIRED} | {"received_at": _dt.datetime.now(_dt.UTC).replace(tzinfo=None).isoformat(timespec="seconds") + "Z"}
+    if prev: rec["received_at"] = prev["received_at"]
+    RECORDINGS[call_id] = rec                                    # новая подписанная ссылка заменяет старую
+    if not prev or prev.get("recording_url") != rec["recording_url"]:
+        REC_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(REC_FILE, "a", encoding="utf-8") as f: f.write(_json.dumps(rec, ensure_ascii=False) + "\n")
+    sid = session_for_call(call_id)
+    print(f"[tel] recording {call_id} -> {rec['recording_uri']} session={sid} duplicate={bool(prev)}", flush=True)
+    return {"status": "ok", "call_id": call_id, "session_id": sid, "duplicate": bool(prev)}

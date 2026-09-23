@@ -66,6 +66,7 @@ Probe-скрипты требуют запущенного сервера. У `p
 | TTS | `TTS_VOICE` (`marin`), `TTS_VOICE_RU`, `TTS_VOICE_KK`, `TTS_TIMEOUT` (15), `TTS_PREWARM` (1) |
 | VAD и перебивание | `VAD_SILENCE_MS` (800), `VAD_EARLY_MS` (128), `VAD_SEM_MIN_MS` (300), `BARGE_IN` (1), `BARGE_MIN_MS` (300), `FILLER_MS` (0) |
 | AudioSocket | `AUDIOSOCKET` (1), `AUDIOSOCKET_BIND` (`0.0.0.0`), `AUDIOSOCKET_PORT` (9092), `AUDIOSOCKET_HOST` (адрес для External Media, по умолчанию пусто) |
+| Запись звонка | `RECORDING_CALLBACK_TOKEN` (если задан, `POST /api/telephony/calls/{call_id}/recording` требует `Authorization: Bearer`); записи хранятся в `backend/logs/recordings.jsonl` |
 | ARI / AMI | `ARI_URL` (пусто = ARI выключен), `ARI_USER` (`voice-ai`), `ARI_PASSWORD`, `ARI_APP` (`voice-ai`), `ARI_TRANSFER_CONTEXT`, `ARI_FALLBACK_QUEUE` (`operator_general`), `ARI_MEDIA_TIMEOUT` (6), `AMI_TRANSFER_CONTEXT` (`saqta-transfer`) |
 | Эволюция | `EVO_BENCH_CONC` (20), `EVO_BENCH_CONC_AFTER` (32), `EVO_RECHECK` (4) |
 

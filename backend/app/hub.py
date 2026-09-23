@@ -46,7 +46,7 @@ class Hub:
         return {"session_id": sid, "channel": s.channel, "caller_phone": rec["caller_phone"], "client_id": (s.client or {}).get("client_id"),
                 "started_at": rec["started_at"], "ended_at": rec["ended_at"], "end_reason": rec["end_reason"], "turns": len(tr),
                 "languages": sorted({t["language"] for t in tr}), "scenarios": list(dict.fromkeys(x["scenario_id"] for t in tr for x in t["scenarios"][:1])),
-                "handoff_queue": (s.handoff or {}).get("queue"), "latency_total_p50": int(statistics.median(tot)) if tot else None,
+                "handoff_queue": (s.handoff or {}).get("queue"), **_recording(sid, s.channel, rec["ended_at"]), "latency_total_p50": int(statistics.median(tot)) if tot else None,
                 "catalog_version": s.catalog_version, "flagged": any(_flag(t) for t in tr)}
 
     def stats(self):
@@ -66,6 +66,13 @@ class Hub:
                 "handoff_rate": round(sum(t["decision"] == "handoff" for t in tr) / n, 3), "unclear_rate": round(sum(t["decision"] == "clarify" for t in tr) / n, 3),
                 "flagged_turns": [{"session_id": t["session_id"], "turn": t["turn"], "transcript": t["transcript"], "scenario_id": t["scenarios"][0]["scenario_id"] if t["scenarios"] else None,
                                    "confidence": t["scenarios"][0]["confidence"] if t["scenarios"] else 0, "decision": t["decision"]} for t in tr if _flag(t)]}
+
+def _recording(sid, channel, ended):
+    """Поля полной записи звонка (только телефон): pending до callback от uploader, затем available."""
+    if channel != "phone": return {"recording_status": None, "recording_uri": None, "recording_url": None}
+    from .telephony import recording_for_session
+    r = recording_for_session(sid)
+    return {"recording_status": "available" if r else "pending", "recording_uri": r and r["recording_uri"], "recording_url": r and r["recording_url"]}
 
 def _flag(t):
     return t["decision"] in ("clarify", "handoff") or (not t["fast_path"] and t["scenarios"] and t["scenarios"][0]["confidence"] < config.CONF_RUN)
