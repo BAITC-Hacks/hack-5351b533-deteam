@@ -1,177 +1,116 @@
-import { useEffect, useState } from 'react'
-import { api, type Scenario, type SupervisorStats, type Turn, type TurnFilter } from '../api'
-import { TracePanel } from '../components/trace/TracePanel'
-import { ConfidenceBadge, DecisionBadge, Empty, Kpi, LangBadge, Panel, RouteBadge } from '../components/ui'
-import { ms, pct, time } from '../lib/format'
+import { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { api, type CallSummary, type Lang } from '../api'
+import { ScenarioPath } from '../components/supervisor/ScenarioPath'
+import { StatsPanel } from '../components/supervisor/StatsPanel'
+import { Empty, FlagBadges, LangBadge, OutcomeBadge, Panel } from '../components/ui'
+import { usePolling } from '../hooks/usePolling'
+import { duration, ms, time } from '../lib/format'
 
-const FILTERS: { id: TurnFilter; label: string }[] = [
-  { id: 'all', label: 'Все' },
-  { id: 'low_confidence', label: 'Сомневался' },
-  { id: 'clarify', label: 'Переспросил' },
-  { id: 'handoff', label: 'Оператор' },
-  { id: 'marked_wrong', label: 'Ошибки' },
-  { id: 'slow', label: 'Медленные' },
+const FILTERS: { id: string; label: string; test: (c: CallSummary) => boolean }[] = [
+  { id: 'all', label: 'Все', test: () => true },
+  { id: 'active', label: 'Идут сейчас', test: (c) => c.outcome === 'active' },
+  { id: 'problems', label: 'С проблемами', test: (c) => c.flags.length > 0 || c.outcome === 'unresolved' },
+  { id: 'handed_off', label: 'Оператор', test: (c) => c.outcome === 'handed_off' },
+  { id: 'unresolved', label: 'Не решены', test: (c) => c.outcome === 'unresolved' },
+  { id: 'wrong', label: 'Размечены ошибки', test: (c) => c.flags.includes('marked_wrong') },
 ]
 
-/** Супервизор: общая картина, журнал реплик и разметка ошибок робота */
+/** Журнал супервизора: все звонки подряд, проблемные подсвечены флагами. Клик — карточка звонка */
 export function SupervisorPage() {
-  const [stats, setStats] = useState<SupervisorStats | null>(null)
-  const [filter, setFilter] = useState<TurnFilter>('all')
-  const [turns, setTurns] = useState<Turn[]>([])
-  const [selected, setSelected] = useState<Turn | null>(null)
-  const [scenarios, setScenarios] = useState<Scenario[]>([])
+  const navigate = useNavigate()
+  const [filter, setFilter] = useState('all')
+  const [lang, setLang] = useState<Lang | ''>('')
+  const calls = usePolling(() => api.listCalls(), 'calls')
+  const stats = usePolling(() => api.getStats(), 'stats')
 
-  const [version, setVersion] = useState(0)
-  const reload = () => setVersion((v) => v + 1)
-
-  useEffect(() => {
-    let alive = true
-    Promise.all([api.getStats(), api.listTurns(filter)]).then(([s, t]) => {
-      if (!alive) return
-      setStats(s)
-      setTurns(t)
-      setSelected((cur) => t.find((x) => x.id === cur?.id) ?? null)
-    })
-    return () => {
-      alive = false
-    }
-  }, [filter, version])
-  useEffect(() => {
-    api.listScenarios().then(setScenarios)
-  }, [])
-
-  async function mark(turn: Turn, correct: boolean, expected?: string) {
-    await api.sendFeedback(turn.id, { correct, expected_scenario_id: expected })
-    reload()
-  }
+  const all = calls.data ?? []
+  const byLang = lang ? all.filter((c) => c.langs.includes(lang)) : all
+  const active = FILTERS.find((f) => f.id === filter)!
+  const rows = byLang.filter(active.test)
 
   return (
     <div className="stack">
-      <Panel title="Сводка" hint="Как робот справляется в целом. Точность — по разметке супервизора">
-        {stats ? (
-          <div className="kpis">
-            <Kpi label="Сессий" value={stats.sessions} />
-            <Kpi label="Реплик" value={stats.turns} />
-            <Kpi label="Точность" value={stats.accuracy === null ? '—' : pct(stats.accuracy)} hint="Доля реплик, размеченных как верные" />
-            <Kpi label="Выбор сценария, ср." value={ms(stats.avg_routing_ms)} tone={stats.avg_routing_ms > 500 ? 'bad' : 'ok'} />
-            <Kpi label="Выбор сценария, p95" value={ms(stats.p95_routing_ms)} tone={stats.p95_routing_ms > 500 ? 'warn' : 'ok'} />
-            <Kpi label="До ответа, ср." value={ms(stats.avg_total_ms)} tone={stats.avg_total_ms > 1500 ? 'bad' : 'ok'} />
-            <Kpi label="Быстрый путь" value={pct(stats.fast_path_share)} hint="Доля реплик, обработанных без LLM" />
-            <Kpi label="Сомнения" value={pct(stats.low_confidence_rate)} />
-            <Kpi label="Переспросы" value={pct(stats.clarify_rate)} />
-            <Kpi label="Оператор" value={pct(stats.handoff_rate)} />
-          </div>
-        ) : (
-          <Empty>Загрузка…</Empty>
-        )}
-        {stats && stats.confusions.length > 0 && (
-          <table className="table confusions">
+      <StatsPanel stats={stats.data} />
+
+      <Panel
+        title="Журнал звонков"
+        hint="Все звонки, новые сверху. Обновляется сам. Клик по строке — весь диалог и трассировка каждой реплики"
+        actions={
+          <select value={lang} onChange={(e) => setLang(e.target.value as Lang | '')} title="Язык клиента">
+            <option value="">Любой язык</option>
+            <option value="ru">RU</option>
+            <option value="kk">KZ</option>
+            <option value="mixed">RU+KZ</option>
+          </select>
+        }
+      >
+        <div className="tabs">
+          {FILTERS.map((f) => (
+            <button key={f.id} className={f.id === filter ? 'tab tab-active' : 'tab'} onClick={() => setFilter(f.id)}>
+              {f.label} <span className="muted">{byLang.filter(f.test).length}</span>
+            </button>
+          ))}
+        </div>
+
+        {calls.error && <div className="callout callout-bad">{calls.error}</div>}
+
+        {rows.length ? (
+          <table className="table clickable">
             <thead>
               <tr>
-                <th>Ожидался сценарий</th>
-                <th>Робот выбрал</th>
-                <th>Раз</th>
+                <th>Начало</th>
+                <th>Клиент</th>
+                <th>Путь по сценариям</th>
+                <th>Реплик</th>
+                <th>Язык</th>
+                <th title="Среднее / максимальное время от конца реплики до ответа">Ответ ср / макс</th>
+                <th>Итог</th>
+                <th>Флаги</th>
               </tr>
             </thead>
             <tbody>
-              {stats.confusions.map((c) => (
-                <tr key={c.expected.id + c.predicted.id}>
-                  <td>{c.expected.title}</td>
-                  <td>{c.predicted.title}</td>
-                  <td>{c.count}</td>
+              {rows.map((c) => (
+                <tr
+                  key={c.session.id}
+                  onClick={() => navigate(`/supervisor/calls/${c.session.id}`)}
+                  className={c.outcome === 'active' ? 'row-live' : ''}
+                >
+                  <td className="nowrap">
+                    {time(c.session.started_at)}
+                    <div className="muted small">{duration(c.session.started_at, c.last_activity_at)}</div>
+                  </td>
+                  <td>{c.session.client?.name ?? <span className="muted">аноним</span>}</td>
+                  <td>
+                    <ScenarioPath path={c.scenario_path} />
+                  </td>
+                  <td>
+                    {c.turns_count}/{c.session.max_turns}
+                  </td>
+                  <td>
+                    <span className="row gap wrap">
+                      {c.langs.map((l) => (
+                        <LangBadge key={l} lang={l} />
+                      ))}
+                    </span>
+                  </td>
+                  <td className="nowrap">
+                    {ms(c.avg_total_ms)} / <span className={c.max_total_ms > 1500 ? 'text-bad' : ''}>{ms(c.max_total_ms)}</span>
+                  </td>
+                  <td>
+                    <OutcomeBadge outcome={c.outcome} />
+                  </td>
+                  <td>
+                    <FlagBadges flags={c.flags} />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        ) : (
+          <Empty>{calls.data ? 'Нет звонков по этому фильтру' : 'Загрузка…'}</Empty>
         )}
       </Panel>
-
-      <div className="split">
-        <Panel
-          title="Журнал реплик"
-          hint="Где робот сомневался, переспрашивал, звал оператора или ошибся. Клик — трассировка"
-          actions={<button onClick={reload}>Обновить</button>}
-        >
-          <div className="tabs">
-            {FILTERS.map((f) => (
-              <button key={f.id} className={f.id === filter ? 'tab tab-active' : 'tab'} onClick={() => setFilter(f.id)}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-          {turns.length ? (
-            <table className="table clickable">
-              <thead>
-                <tr>
-                  <th>Время</th>
-                  <th>Реплика</th>
-                  <th>Решение</th>
-                  <th>Сценарий</th>
-                  <th>До ответа</th>
-                </tr>
-              </thead>
-              <tbody>
-                {turns.map((t) => (
-                  <tr
-                    key={t.id}
-                    onClick={() => setSelected(t)}
-                    className={`${t.id === selected?.id ? 'row-selected' : ''} ${t.feedback?.correct === false ? 'row-wrong' : ''}`}
-                  >
-                    <td className="muted small">{time(t.created_at)}</td>
-                    <td>
-                      <LangBadge lang={t.user.lang} /> {t.user.text}
-                    </td>
-                    <td>
-                      <DecisionBadge decision={t.trace.decision} /> <RouteBadge path={t.trace.route_path} />
-                    </td>
-                    <td>
-                      {t.trace.selected ? (
-                        <>
-                          {t.trace.selected.title} <ConfidenceBadge value={t.trace.selected.confidence} />
-                        </>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>{ms(t.trace.latency.total_ms)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <Empty>Нет реплик по этому фильтру</Empty>
-          )}
-        </Panel>
-
-        <TracePanel
-          turn={selected}
-          extra={
-            selected && (
-              <div className="feedback">
-                <span className="muted small">Разметка:</span>
-                {selected.feedback && (
-                  <span className={selected.feedback.correct ? 'text-ok' : 'text-bad'}>
-                    {selected.feedback.correct ? 'верно' : 'ошибка'}
-                  </span>
-                )}
-                <button onClick={() => mark(selected, true)}>✓ Верно</button>
-                <select
-                  value=""
-                  onChange={(e) => e.target.value && mark(selected, false, e.target.value)}
-                  title="Выберите, какой сценарий был правильным"
-                >
-                  <option value="">✗ Ошибка — правильный сценарий…</option>
-                  {scenarios.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )
-          }
-        />
-      </div>
     </div>
   )
 }

@@ -113,6 +113,7 @@ export interface TurnFeedback {
 export interface SupervisorStats {
   sessions: number
   turns: number
+  resolved_rate: number // доля завершённых звонков, закрытых роботом без оператора
   accuracy: number | null // по разметке супервизора
   avg_routing_ms: number
   p95_routing_ms: number
@@ -124,7 +125,36 @@ export interface SupervisorStats {
   confusions: { expected: ScenarioRef; predicted: ScenarioRef; count: number }[]
 }
 
-export type TurnFilter = 'all' | 'low_confidence' | 'handoff' | 'clarify' | 'marked_wrong' | 'slow'
+/** Чем закончился звонок */
+export type CallOutcome =
+  | 'active' // идёт сейчас
+  | 'resolved' // робот закрыл вопрос сам
+  | 'unresolved' // закончился на переспросе / без сценария
+  | 'handed_off' // передан оператору
+
+export type CallFlag =
+  | 'low_confidence' // хотя бы одна реплика с уверенностью ниже порога
+  | 'slow' // хотя бы один ответ дольше 1,5 с
+  | 'marked_wrong' // супервизор отметил ошибку
+  | 'mixed_lang' // было смешение RU+KZ
+
+/** Строка журнала звонков — бэкенд собирает её из реплик сессии */
+export interface CallSummary {
+  session: Session
+  turns_count: number
+  outcome: CallOutcome
+  scenario_path: { scenario: ScenarioRef | null; decision: Decision }[] // по одному шагу на реплику
+  langs: Lang[]
+  flags: CallFlag[]
+  avg_total_ms: number
+  max_total_ms: number
+  last_activity_at: string
+}
+
+export interface CallDetails {
+  summary: CallSummary
+  turns: Turn[]
+}
 
 export interface VoiceRouterApi {
   listClients(): Promise<Client[]>
@@ -133,7 +163,8 @@ export interface VoiceRouterApi {
   sendTurn(sessionId: string, input: TurnInput): Promise<Turn>
   endSession(sessionId: string): Promise<void>
   getStats(): Promise<SupervisorStats>
-  listTurns(filter: TurnFilter): Promise<Turn[]>
+  listCalls(): Promise<CallSummary[]> // все звонки, новые сверху
+  getCall(sessionId: string): Promise<CallDetails>
   sendFeedback(turnId: string, feedback: TurnFeedback): Promise<void>
 }
 

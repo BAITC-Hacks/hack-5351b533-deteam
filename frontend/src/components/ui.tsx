@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { LOW_CONFIDENCE, type Decision, type Lang, type RoutePath } from '../api'
-import { DECISION_LABEL, LANG_LABEL, ROUTE_LABEL, pct } from '../lib/format'
+import { LOW_CONFIDENCE, type CallFlag, type CallOutcome, type Decision, type Lang, type RoutePath } from '../api'
+import { DECISION_LABEL, FLAG_LABEL, LANG_LABEL, OUTCOME_LABEL, ROUTE_LABEL, pct } from '../lib/format'
 
 /** Блок экрана. hint — короткая подпись «что здесь и зачем», чтобы интерфейс читался без разработчика */
 export function Panel(props: { title: string; hint?: string; actions?: ReactNode; children: ReactNode; className?: string }) {
@@ -71,5 +71,25 @@ export function Kpi({ label, value, hint, tone }: { label: string; value: ReactN
       <div className="kpi-value">{value}</div>
       <div className="kpi-label">{label}</div>
     </div>
+  )
+}
+
+const OUTCOME_TONE: Record<CallOutcome, Tone> = { active: 'info', resolved: 'ok', unresolved: 'warn', handed_off: 'bad' }
+
+export function OutcomeBadge({ outcome }: { outcome: CallOutcome }) {
+  return <Badge tone={OUTCOME_TONE[outcome]}>{OUTCOME_LABEL[outcome]}</Badge>
+}
+
+const FLAG_TONE: Record<CallFlag, Tone> = { low_confidence: 'warn', slow: 'warn', marked_wrong: 'bad', mixed_lang: 'info' }
+
+export function FlagBadges({ flags }: { flags: CallFlag[] }) {
+  return (
+    <span className="row gap wrap">
+      {flags.map((f) => (
+        <Badge key={f} tone={FLAG_TONE[f]}>
+          {FLAG_LABEL[f]}
+        </Badge>
+      ))}
+    </span>
   )
 }

@@ -1,5 +1,6 @@
 import { NavLink, Route, Routes } from 'react-router'
 import { USE_MOCK } from './api'
+import { CallPage } from './pages/CallPage'
 import { ScenariosPage } from './pages/ScenariosPage'
 import { SimulatorPage } from './pages/SimulatorPage'
 import { SupervisorPage } from './pages/SupervisorPage'
@@ -24,6 +25,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<SimulatorPage />} />
           <Route path="/supervisor" element={<SupervisorPage />} />
+          <Route path="/supervisor/calls/:id" element={<CallPage />} />
           <Route path="/scenarios" element={<ScenariosPage />} />
         </Routes>
       </main>

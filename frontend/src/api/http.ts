@@ -1,11 +1,12 @@
 import type {
+  CallDetails,
+  CallSummary,
   Client,
   Scenario,
   Session,
   SupervisorStats,
   Turn,
   TurnFeedback,
-  TurnFilter,
   TurnInput,
   VoiceRouterApi,
 } from './types'
@@ -42,7 +43,8 @@ export const httpApi: VoiceRouterApi = {
 
   endSession: (sessionId) => request<void>(`/sessions/${sessionId}/end`, { method: 'POST' }),
   getStats: () => request<SupervisorStats>('/supervisor/stats'),
-  listTurns: (filter: TurnFilter) => request<Turn[]>(`/supervisor/turns?filter=${filter}`),
+  listCalls: () => request<CallSummary[]>('/sessions'),
+  getCall: (sessionId) => request<CallDetails>(`/sessions/${sessionId}`),
   sendFeedback: (turnId, feedback: TurnFeedback) =>
     request<void>(`/turns/${turnId}/feedback`, json(feedback)),
 }

@@ -1,4 +1,4 @@
-import type { Decision, Emotion, Lang, RoutePath } from '../api'
+import type { CallFlag, CallOutcome, Decision, Emotion, Lang, RoutePath } from '../api'
 
 export const pct = (x: number) => `${Math.round(x * 100)}%`
 export const ms = (x: number | undefined) => (x === undefined ? '—' : `${Math.round(x)} мс`)
@@ -20,4 +20,23 @@ export const EMOTION_LABEL: Record<Emotion, string> = {
   neutral: 'нейтрально',
   positive: 'позитив',
   negative: 'негатив',
+}
+
+export const OUTCOME_LABEL: Record<CallOutcome, string> = {
+  active: 'идёт сейчас',
+  resolved: 'решено роботом',
+  unresolved: 'не решено',
+  handed_off: 'оператор',
+}
+
+export const FLAG_LABEL: Record<CallFlag, string> = {
+  low_confidence: 'сомневался',
+  slow: 'медленно',
+  marked_wrong: 'ошибка',
+  mixed_lang: 'RU+KZ',
+}
+
+export function duration(fromIso: string, toIso: string) {
+  const s = Math.max(0, Math.round((Date.parse(toIso) - Date.parse(fromIso)) / 1000))
+  return s < 60 ? `${s} с` : `${Math.floor(s / 60)} мин ${s % 60} с`
 }

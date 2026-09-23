@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react'
 import type { Turn } from '../../api'
-import { EMOTION_LABEL } from '../../lib/format'
+import { EMOTION_LABEL, pct } from '../../lib/format'
+
+/** Если второй кандидат ближе этого к выбранному — подсвечиваем как «на грани» */
+const CLOSE_MARGIN = 0.15
 import { Badge, ConfidenceBadge, DecisionBadge, Empty, LangBadge, Panel, RouteBadge } from '../ui'
 import { LatencyBars } from './LatencyBars'
 
@@ -23,6 +26,9 @@ export function TracePanel({ turn, extra }: { turn: Turn | null; extra?: ReactNo
     )
   }
   const { trace, user } = turn
+  const candidates = trace.selected ? [trace.selected, ...trace.alternatives] : trace.alternatives
+  const margin = trace.selected && trace.alternatives[0] ? trace.selected.confidence - trace.alternatives[0].confidence : null
+  const close = margin !== null && margin < CLOSE_MARGIN
 
   return (
     <Panel
@@ -74,15 +80,26 @@ export function TracePanel({ turn, extra }: { turn: Turn | null; extra?: ReactNo
       </Section>
 
       <Section title="Альтернативы">
-        {trace.alternatives.length ? (
+        {close && (
+          <div className="callout callout-warn">
+            Второй вариант отстаёт всего на {pct(margin!)} — робот был на грани. Стоит проверить.
+          </div>
+        )}
+        {candidates.length ? (
           <ul className="candidates">
-            {trace.alternatives.map((a) => (
-              <li key={a.id}>
+            {candidates.map((c, i) => (
+              <li key={c.id} className={i === 0 && trace.selected ? 'candidate-chosen' : ''}>
                 <div className="row between">
-                  <span>{a.title}</span>
-                  <ConfidenceBadge value={a.confidence} />
+                  <span>
+                    {i === 0 && trace.selected && '✓ '}
+                    {c.title}
+                  </span>
+                  <span className="small">{pct(c.confidence)}</span>
                 </div>
-                <div className="muted small">{a.reason}</div>
+                <div className="bar">
+                  <div className="bar-fill" style={{ width: pct(c.confidence) }} />
+                </div>
+                <div className="muted small">{c.reason}</div>
               </li>
             ))}
           </ul>

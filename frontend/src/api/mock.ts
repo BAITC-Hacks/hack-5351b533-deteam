@@ -4,6 +4,9 @@
 import {
   LOW_CONFIDENCE,
   TARGET_TOTAL_MS,
+  type CallFlag,
+  type CallOutcome,
+  type CallSummary,
   type Client,
   type Decision,
   type Lang,
@@ -13,7 +16,6 @@ import {
   type Session,
   type SupervisorStats,
   type Turn,
-  type TurnFilter,
   type TurnInput,
   type TurnTrace,
   type VoiceRouterApi,
@@ -275,25 +277,64 @@ function createSession(clientId: string | null): SessionState {
   return state
 }
 
-// Демо-история, чтобы панель супервизора не была пустой
-{
-  const demo = createSession('c1')
-  SAMPLE_UTTERANCES.forEach((t) => route(demo, t, 'voice'))
-  demo.turns[1].feedback = { correct: false, expected_scenario_id: 'policy_info', comment: 'Спрашивал про свой полис' }
-  demo.session.status = 'ended'
+// Демо-журнал: несколько разных звонков, чтобы панель супервизора не была пустой
+function seedCall(clientId: string | null, minutesAgo: number, utterances: string[], tweak?: (turns: Turn[]) => void) {
+  const state = createSession(clientId)
+  const start = Date.now() - minutesAgo * 60_000
+  state.session.started_at = new Date(start).toISOString()
+  utterances.forEach((text, i) => {
+    route(state, text, 'voice').created_at = new Date(start + (i + 1) * 25_000).toISOString()
+  })
+  tweak?.(state.turns)
+  if (state.session.status === 'active') state.session.status = 'ended'
 }
+
+seedCall('c1', 42, [
+  'Здравствуйте, я вчера оплатил, деньги списались, а полис не подтвердился… а, и ещё, адрес доставки поменять надо',
+  'Мекенжайды өзгерту керек',
+  'Мен вчера төледім, но полис әлі жоқ',
+], (t) => (t[0].feedback = { correct: true }))
+seedCall('c2', 35, ['Я попал в аварию вчера', 'Когда будет выплата?'])
+seedCall(null, 28, ['Хочу расторгнуть договор', 'Соедините с оператором'], (t) => (t[0].feedback = { correct: true }))
+seedCall('c3', 20, ['Сәлеметсіз бе, көлікке сақтандыру керек', 'Полисім қашанға дейін жарамды?'])
+seedCall('c2', 12, ['Ну я не знаю, там что-то с документами', 'В общем непонятно, деньги где'], (t) => {
+  t[0].trace.latency = { stt_ms: 280, routing_ms: 940, response_ms: 420, tts_ms: 260, total_ms: 1900 }
+  t[1].feedback = { correct: false, expected_scenario_id: 'claim_status', comment: 'Спрашивал про выплату' }
+})
+seedCall('c1', 5, ['До какого числа действует мой полис?', 'А сколько можно ждать выплату!'])
 
 const allTurns = () => [...sessions.values()].flatMap((s) => s.turns)
 
 const isLowConfidence = (t: Turn) => (t.trace.selected?.confidence ?? 0) < LOW_CONFIDENCE && t.trace.decision !== 'handoff'
 
-const FILTERS: Record<TurnFilter, (t: Turn) => boolean> = {
-  all: () => true,
-  low_confidence: isLowConfidence,
-  handoff: (t) => t.trace.decision === 'handoff',
-  clarify: (t) => t.trace.decision === 'clarify',
-  marked_wrong: (t) => t.feedback?.correct === false,
-  slow: (t) => t.trace.latency.total_ms > TARGET_TOTAL_MS,
+function summarize({ session, turns }: SessionState): CallSummary {
+  const last = turns.at(-1)
+  const outcome: CallOutcome =
+    session.status === 'active'
+      ? 'active'
+      : session.status === 'handed_off'
+        ? 'handed_off'
+        : last && last.trace.decision !== 'clarify'
+          ? 'resolved'
+          : 'unresolved'
+  const langs = [...new Set(turns.map((t) => t.user.lang))]
+  const flags: CallFlag[] = []
+  if (turns.some(isLowConfidence)) flags.push('low_confidence')
+  if (turns.some((t) => t.trace.latency.total_ms > TARGET_TOTAL_MS)) flags.push('slow')
+  if (turns.some((t) => t.feedback?.correct === false)) flags.push('marked_wrong')
+  if (langs.includes('mixed')) flags.push('mixed_lang')
+  const totals = turns.map((t) => t.trace.latency.total_ms)
+  return {
+    session,
+    turns_count: turns.length,
+    outcome,
+    scenario_path: turns.map((t) => ({ scenario: t.trace.selected && ref(t.trace.selected), decision: t.trace.decision })),
+    langs,
+    flags,
+    avg_total_ms: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0,
+    max_total_ms: totals.length ? Math.max(...totals) : 0,
+    last_activity_at: last?.created_at ?? session.started_at,
+  }
 }
 
 export const mockApi: VoiceRouterApi = {
@@ -333,23 +374,32 @@ export const mockApi: VoiceRouterApi = {
       row.count++
       confusions.set(key, row)
     }
+    const finished = [...sessions.values()].map(summarize).filter((c) => c.outcome !== 'active')
     const share = (f: (t: Turn) => boolean) => turns.filter(f).length / n
     return {
       sessions: sessions.size,
       turns: turns.length,
+      resolved_rate: finished.length ? finished.filter((c) => c.outcome === 'resolved').length / finished.length : 0,
       accuracy: marked.length ? marked.filter((t) => t.feedback!.correct).length / marked.length : null,
       avg_routing_ms: Math.round(routing.reduce((a, b) => a + b, 0) / n),
       p95_routing_ms: routing[Math.min(routing.length - 1, Math.floor(routing.length * 0.95))] ?? 0,
       avg_total_ms: Math.round(turns.reduce((a, t) => a + t.trace.latency.total_ms, 0) / n),
       fast_path_share: share((t) => t.trace.route_path === 'fast'),
-      clarify_rate: share(FILTERS.clarify),
-      handoff_rate: share(FILTERS.handoff),
+      clarify_rate: share((t) => t.trace.decision === 'clarify'),
+      handoff_rate: share((t) => t.trace.decision === 'handoff'),
       low_confidence_rate: share(isLowConfidence),
       confusions: [...confusions.values()],
     }
   },
-  async listTurns(filter) {
-    return allTurns().filter(FILTERS[filter]).reverse()
+  async listCalls() {
+    return [...sessions.values()]
+      .map(summarize)
+      .sort((a, b) => b.last_activity_at.localeCompare(a.last_activity_at))
+  },
+  async getCall(sessionId) {
+    const state = sessions.get(sessionId)
+    if (!state) throw new Error('Звонок не найден')
+    return { summary: summarize(state), turns: [...state.turns] }
   },
   async sendFeedback(turnId, feedback) {
     const turn = allTurns().find((t) => t.id === turnId)
