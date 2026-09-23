@@ -7,3 +7,6 @@ dist/
 .idea/
 .venv/
 __pycache__/
+catalog/
+regression/
+*.sqlite

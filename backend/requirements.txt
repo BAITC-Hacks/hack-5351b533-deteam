@@ -1,0 +1,6 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+openai>=3.19
+python-dotenv>=1.0
+num2words>=0.5.13
+numpy>=1.26
