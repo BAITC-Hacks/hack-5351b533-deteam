@@ -9,3 +9,4 @@
 | Телефонии | [docs/telephony/README.md](docs/telephony/README.md) |
 | Всем | [contracts/](contracts), [fixtures/](fixtures) |
 | Условия кейса | [docs/README.ru.md](docs/README.ru.md), [ТЗ](docs/HackAlem_AI_Voice_Router_гибридный_голосовой_AI_робот_с_LLM_слоем.pdf) |
+| Asterisk | [asterisk/README.md](asterisk/README.md) |

@@ -1,0 +1,19 @@
+services:
+  asterisk:
+    build: .
+    container_name: voice-asterisk
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "5060:5060/udp"
+      - "10000-10100:10000-10100/udp"
+      - "127.0.0.1:5038:5038/tcp"
+      - "127.0.0.1:8088:8088/tcp"
+    volumes:
+      - ./config/pjsip_trunk.conf:/etc/asterisk/pjsip_trunk.conf:ro
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show uptime"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
